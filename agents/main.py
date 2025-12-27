@@ -326,10 +326,34 @@ def test_github():
         return {"status": "error", "error": str(e)}
 
 
+@app.function(
+    image=image,
+    secrets=secrets,
+    timeout=60,
+)
+def test_llm():
+    """Test LLM providers (Anthropic primary, Z.AI fallback)."""
+    from src.services.llm import get_llm_client
+
+    client = get_llm_client()
+
+    try:
+        response = client.chat(
+            messages=[{"role": "user", "content": "Say hello in exactly 5 words"}],
+            max_tokens=50,
+        )
+        return {
+            "status": "success",
+            "response": response,
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @app.local_entrypoint()
 def main():
     """Local test entrypoint."""
-    print("Initializing skills...")
-    result = init_skills.remote()
-    print(f"Skills init result: {result}")
+    print("Testing LLM...")
+    result = test_llm.remote()
+    print(f"LLM test result: {result}")
     print("\nDeploy URL: https://duc-a-nguyen--claude-agents-telegram-chat-agent.modal.run")

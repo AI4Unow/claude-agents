@@ -2,6 +2,7 @@ modal>=0.60.0
 fastapi>=0.109.0
 uvicorn>=0.27.0
 openai>=1.0.0
+anthropic>=0.40.0
 zhipuai>=2.0.0
 firebase-admin>=6.4.0
 qdrant-client>=1.7.0
