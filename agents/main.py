@@ -27,6 +27,7 @@ secrets = [
     modal.Secret.from_name("zai-credentials"),
     modal.Secret.from_name("firebase-credentials"),
     modal.Secret.from_name("telegram-credentials"),
+    modal.Secret.from_name("qdrant-credentials"),
 ]
 
 
