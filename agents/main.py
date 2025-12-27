@@ -24,11 +24,10 @@ skills_volume = modal.Volume.from_name("skills-volume", create_if_missing=True)
 
 # Define secrets
 secrets = [
-    modal.Secret.from_name("zai-credentials"),
+    modal.Secret.from_name("anthropic-credentials"),
     modal.Secret.from_name("firebase-credentials"),
     modal.Secret.from_name("telegram-credentials"),
     modal.Secret.from_name("qdrant-credentials"),
-    modal.Secret.from_name("anthropic-credentials"),
 ]
 
 
@@ -92,14 +91,10 @@ async def handle_command(command: str, user: dict) -> str:
 
 async def process_message(text: str, user: dict, chat_id: int) -> str:
     """Process a regular message with LLM."""
-    from openai import OpenAI
+    from src.services.llm import get_llm_client
     from pathlib import Path
 
-    api_key = os.environ.get("ZAI_API_KEY", "")
-    base_url = os.environ.get("ZAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4")
-    model = os.environ.get("ZAI_MODEL", "glm-4.7")
-
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    client = get_llm_client()
 
     # Read instructions from skills volume
     info_path = Path("/skills/telegram-chat/info.md")
@@ -107,16 +102,13 @@ async def process_message(text: str, user: dict, chat_id: int) -> str:
     if info_path.exists():
         system_prompt = info_path.read_text()
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": text}
-        ],
+    response = client.chat(
+        messages=[{"role": "user", "content": text}],
+        system=system_prompt,
         max_tokens=1024,
     )
 
-    return response.choices[0].message.content
+    return response
 
 
 async def send_telegram_message(chat_id: int, text: str):
