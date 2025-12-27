@@ -50,27 +50,40 @@ def create_web_app():
     @web_app.post("/webhook/telegram")
     async def telegram_webhook(request: Request):
         """Handle Telegram webhook updates."""
-        update = await request.json()
+        import structlog
+        logger = structlog.get_logger()
 
-        # Extract message
-        message = update.get("message", {})
-        chat_id = message.get("chat", {}).get("id")
-        text = message.get("text", "")
-        user = message.get("from", {})
+        try:
+            update = await request.json()
+            logger.info("telegram_update", update_id=update.get("update_id"))
 
-        if not chat_id or not text:
+            # Extract message
+            message = update.get("message", {})
+            chat_id = message.get("chat", {}).get("id")
+            text = message.get("text", "")
+            user = message.get("from", {})
+
+            if not chat_id or not text:
+                return {"ok": True}
+
+            logger.info("processing_message", chat_id=chat_id, text_len=len(text))
+
+            # Handle commands
+            if text.startswith("/"):
+                response = await handle_command(text, user)
+            else:
+                response = await process_message(text, user, chat_id)
+
+            logger.info("sending_response", chat_id=chat_id, response_len=len(response))
+
+            # Send response
+            await send_telegram_message(chat_id, response)
+
             return {"ok": True}
 
-        # Handle commands
-        if text.startswith("/"):
-            response = await handle_command(text, user)
-        else:
-            response = await process_message(text, user, chat_id)
-
-        # Send response
-        await send_telegram_message(chat_id, response)
-
-        return {"ok": True}
+        except Exception as e:
+            logger.error("webhook_error", error=str(e))
+            return {"ok": False, "error": str(e)}
 
     return web_app
 
@@ -114,16 +127,37 @@ async def process_message(text: str, user: dict, chat_id: int) -> str:
 async def send_telegram_message(chat_id: int, text: str):
     """Send message via Telegram API."""
     import httpx
+    import structlog
 
+    logger = structlog.get_logger()
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
 
-    async with httpx.AsyncClient() as client:
-        await client.post(url, json={
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": "Markdown",
-        })
+    if not token:
+        logger.error("telegram_no_token")
+        return False
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id, "text": text}
+            )
+            result = response.json()
+
+            if not result.get("ok"):
+                logger.error("telegram_send_failed",
+                    chat_id=chat_id,
+                    error=result.get("description"),
+                    error_code=result.get("error_code")
+                )
+                return False
+
+            logger.info("telegram_sent", chat_id=chat_id)
+            return True
+
+    except Exception as e:
+        logger.error("telegram_exception", error=str(e), chat_id=chat_id)
+        return False
 
 
 @app.function(
