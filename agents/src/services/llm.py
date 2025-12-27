@@ -29,19 +29,39 @@ class LLMClient:
 
     def chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict],
         system: Optional[str] = None,
         max_tokens: int = 2048,
         temperature: float = 0.7,
-    ) -> str:
-        """Send chat completion request."""
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=max_tokens,
-            system=system or "You are a helpful assistant.",
-            messages=messages,
-        )
+        tools: Optional[List[dict]] = None,
+    ):
+        """Send chat completion request.
+
+        Args:
+            messages: Conversation messages
+            system: System prompt
+            max_tokens: Max response tokens
+            temperature: Sampling temperature
+            tools: Optional list of tool definitions for tool_use
+
+        Returns:
+            Full Message object if tools provided, else text string
+        """
+        kwargs = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "system": system or "You are a helpful assistant.",
+            "messages": messages,
+        }
+        if tools:
+            kwargs["tools"] = tools
+
+        response = self.client.messages.create(**kwargs)
         logger.info("llm_success", model=self.model)
+
+        # Return full response if tools (for tool_use inspection), else just text
+        if tools:
+            return response
         return response.content[0].text
 
 

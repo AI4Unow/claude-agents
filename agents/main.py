@@ -28,6 +28,8 @@ secrets = [
     modal.Secret.from_name("firebase-credentials"),
     modal.Secret.from_name("telegram-credentials"),
     modal.Secret.from_name("qdrant-credentials"),
+    modal.Secret.from_name("exa-credentials"),
+    modal.Secret.from_name("tavily-credentials"),
 ]
 
 
@@ -103,25 +105,28 @@ async def handle_command(command: str, user: dict) -> str:
 
 
 async def process_message(text: str, user: dict, chat_id: int) -> str:
-    """Process a regular message with LLM."""
-    from src.services.llm import get_llm_client
+    """Process a regular message with agentic loop (tools enabled)."""
+    from src.services.agentic import run_agentic_loop
     from pathlib import Path
+    import structlog
 
-    client = get_llm_client()
+    logger = structlog.get_logger()
 
     # Read instructions from skills volume
     info_path = Path("/skills/telegram-chat/info.md")
-    system_prompt = "You are a helpful AI assistant."
+    system_prompt = "You are a helpful AI assistant with web search capability. Use the web_search tool when users ask about current events, weather, news, prices, or anything requiring up-to-date information."
     if info_path.exists():
         system_prompt = info_path.read_text()
 
-    response = client.chat(
-        messages=[{"role": "user", "content": text}],
-        system=system_prompt,
-        max_tokens=1024,
-    )
-
-    return response
+    try:
+        response = await run_agentic_loop(
+            user_message=text,
+            system=system_prompt,
+        )
+        return response
+    except Exception as e:
+        logger.error("agentic_error", error=str(e))
+        return f"Sorry, I encountered an error processing your request."
 
 
 async def send_telegram_message(chat_id: int, text: str):

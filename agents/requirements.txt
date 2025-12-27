@@ -10,3 +10,5 @@ httpx>=0.26.0
 pydantic>=2.5.0
 pydantic-settings>=2.0.0
 structlog>=24.1.0
+exa-py>=1.0.0
+tavily-python>=0.3.0
