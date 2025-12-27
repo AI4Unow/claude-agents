@@ -23,6 +23,7 @@ class LLMClient:
             self._client = anthropic.Anthropic(
                 api_key=self.api_key,
                 base_url=self.base_url,
+                default_headers={"x-api-key": self.api_key},
             )
         return self._client
 
