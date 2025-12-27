@@ -1,0 +1,5 @@
+[project]
+name = "claude-agents"
+
+[settings]
+default_workspace = "duc-a-nguyen"
