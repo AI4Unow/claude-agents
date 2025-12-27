@@ -8,3 +8,6 @@ This directory contains II Framework skills:
 ## Available Skills
 
 - `telegram-chat/` - Telegram bot interface
+- `github/` - GitHub repository automation
+- `data/` - Analytics and reporting
+- `content/` - Content generation and transformation

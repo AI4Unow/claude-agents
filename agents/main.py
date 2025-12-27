@@ -32,6 +32,9 @@ secrets = [
     modal.Secret.from_name("tavily-credentials"),
 ]
 
+# GitHub secret (separate for security)
+github_secret = modal.Secret.from_name("github-credentials")
+
 
 def create_web_app():
     """Create FastAPI app (called inside Modal container)."""
@@ -72,7 +75,7 @@ def create_web_app():
 
             # Handle commands
             if text.startswith("/"):
-                response = await handle_command(text, user)
+                response = await handle_command(text, user, chat_id)
             else:
                 response = await process_message(text, user, chat_id)
 
@@ -87,19 +90,95 @@ def create_web_app():
             logger.error("webhook_error", error=str(e))
             return {"ok": False, "error": str(e)}
 
+    @web_app.post("/webhook/github")
+    async def github_webhook(request: Request):
+        """Handle GitHub webhook events."""
+        import structlog
+        logger = structlog.get_logger()
+
+        try:
+            event = request.headers.get("X-GitHub-Event", "push")
+            payload = await request.json()
+
+            logger.info("github_webhook", event=event)
+
+            task = {
+                "type": "github",
+                "payload": {
+                    "action": f"handle_{event}",
+                    "event": event,
+                    "data": payload
+                }
+            }
+
+            from src.agents.github_automation import process_github_task
+            result = await process_github_task(task)
+            return {"ok": True, "result": result}
+
+        except Exception as e:
+            logger.error("github_webhook_error", error=str(e))
+            return {"ok": False, "error": str(e)}
+
+    @web_app.post("/api/content")
+    async def content_api(request: Request):
+        """Content Agent HTTP API endpoint."""
+        import structlog
+        logger = structlog.get_logger()
+
+        try:
+            payload = await request.json()
+            logger.info("content_api", action=payload.get("action"))
+
+            task = {"type": "content", "payload": payload}
+
+            from src.agents.content_generator import process_content_task
+            result = await process_content_task(task)
+            return {"ok": True, "result": result}
+
+        except Exception as e:
+            logger.error("content_api_error", error=str(e))
+            return {"ok": False, "error": str(e)}
+
     return web_app
 
 
-async def handle_command(command: str, user: dict) -> str:
-    """Handle bot commands."""
-    cmd = command.split()[0].lower()
+async def handle_command(command: str, user: dict, chat_id: int) -> str:
+    """Handle bot commands including content agent commands."""
+    parts = command.split(maxsplit=1)
+    cmd = parts[0].lower()
+    args = parts[1] if len(parts) > 1 else ""
 
     if cmd == "/start":
         return f"Hello {user.get('first_name', 'there')}! I'm your AI assistant powered by II Framework."
     elif cmd == "/help":
-        return "Available commands:\n/start - Welcome\n/help - This message\n/status - Check agent status"
+        return (
+            "Available commands:\n"
+            "/start - Welcome\n"
+            "/help - This message\n"
+            "/status - Check agent status\n"
+            "/translate <text> - Translate to English\n"
+            "/summarize <text> - Summarize text\n"
+            "/rewrite <text> - Improve text"
+        )
     elif cmd == "/status":
         return "Agent is running normally."
+    elif cmd == "/translate" and args:
+        from src.agents.content_generator import process_content_task
+        task = {"payload": {"action": "translate", "text": args, "target": "en"}}
+        result = await process_content_task(task)
+        return result.get("message", result.get("translation", "Translation failed"))
+    elif cmd == "/summarize" and args:
+        from src.agents.content_generator import process_content_task
+        task = {"payload": {"action": "summarize", "text": args}}
+        result = await process_content_task(task)
+        return result.get("message", result.get("summary", "Summary failed"))
+    elif cmd == "/rewrite" and args:
+        from src.agents.content_generator import process_content_task
+        task = {"payload": {"action": "rewrite", "text": args}}
+        result = await process_content_task(task)
+        return result.get("message", result.get("rewritten", "Rewrite failed"))
+    elif cmd in ["/translate", "/summarize", "/rewrite"]:
+        return f"Usage: {cmd} <text>"
     else:
         return "Unknown command. Try /help"
 
@@ -215,6 +294,101 @@ def sync_skills_from_github():
     return {"status": "skipped", "reason": "skills path not found in repo"}
 
 
+# ==================== GitHub Agent ====================
+
+@app.function(
+    image=image,
+    secrets=secrets + [github_secret],
+    volumes={"/skills": skills_volume},
+    timeout=120,
+)
+async def github_agent(task: dict):
+    """GitHub Agent - Repository automation."""
+    from src.agents.github_automation import process_github_task
+    return await process_github_task(task)
+
+
+@app.function(
+    image=image,
+    secrets=secrets + [github_secret],
+    volumes={"/skills": skills_volume},
+    schedule=modal.Cron("0 * * * *"),  # Every hour for repo monitoring
+    timeout=300,
+)
+async def github_monitor():
+    """Monitor configured repositories for new activity (hourly)."""
+    from src.agents.github_automation import monitor_repositories
+    import structlog
+    logger = structlog.get_logger()
+
+    # Read monitored repos from skill file
+    from pathlib import Path
+    info_path = Path("/skills/github/info.md")
+    repos = []
+
+    if info_path.exists():
+        content = info_path.read_text()
+        # Parse repos from info.md (look for ## Monitored Repos section)
+        if "## Monitored Repos" in content:
+            lines = content.split("## Monitored Repos")[1].split("##")[0].strip().split("\n")
+            repos = [l.strip("- ").strip() for l in lines if l.strip().startswith("-")]
+
+    if not repos:
+        logger.info("github_monitor_skip", reason="No repos configured")
+        return {"status": "skipped", "reason": "No repos configured in skill"}
+
+    result = await monitor_repositories(repos)
+    logger.info("github_monitor_complete", repos=len(repos))
+    return result
+
+
+# ==================== Data Agent ====================
+
+@app.function(
+    image=image,
+    secrets=secrets,
+    volumes={"/skills": skills_volume},
+    timeout=180,
+)
+async def data_agent(task: dict):
+    """Data Agent - Analytics and reporting."""
+    from src.agents.data_processor import process_data_task
+    return await process_data_task(task)
+
+
+@app.function(
+    image=image,
+    secrets=secrets,
+    volumes={"/skills": skills_volume},
+    schedule=modal.Cron("0 1 * * *"),  # 1 AM UTC = 8 AM ICT
+    timeout=300,
+)
+async def daily_summary():
+    """Generate daily activity summary (8 AM ICT)."""
+    import structlog
+    logger = structlog.get_logger()
+
+    task = {"type": "data", "payload": {"action": "daily_summary"}}
+    result = await data_agent.remote.aio(task)
+
+    logger.info("daily_summary_complete", status=result.get("status"))
+    return result
+
+
+# ==================== Content Agent ====================
+
+@app.function(
+    image=image,
+    secrets=secrets,
+    volumes={"/skills": skills_volume},
+    timeout=120,
+)
+async def content_agent(task: dict):
+    """Content Agent - Content generation and transformation."""
+    from src.agents.content_generator import process_content_task
+    return await process_content_task(task)
+
+
 @app.function(
     image=image,
     secrets=secrets,
@@ -222,14 +396,11 @@ def sync_skills_from_github():
     timeout=60,
 )
 def init_skills():
-    """Initialize skills directory with default info.md files."""
+    """Initialize skills directory with all agent info.md files."""
     from pathlib import Path
 
-    telegram_info = Path("/skills/telegram-chat/info.md")
-
-    if not telegram_info.exists():
-        telegram_info.parent.mkdir(parents=True, exist_ok=True)
-        telegram_info.write_text("""# Telegram Chat Agent
+    skills = {
+        "telegram-chat": """# Telegram Chat Agent
 
 ## Instructions
 You are a helpful AI assistant communicating via Telegram.
@@ -238,24 +409,87 @@ You are a helpful AI assistant communicating via Telegram.
 - Respond in the same language as the user
 
 ## Tools Available
-- Chat with users via Telegram
-- Process text messages
-- Handle bot commands
+- web_search: Search the web for current information
+- get_datetime: Get current date/time in any timezone
+- run_python: Execute Python code for calculations
+- read_webpage: Fetch and read URL content
+- search_memory: Query past conversations
+
+## Commands
+- /start - Welcome message
+- /help - Show available commands
+- /status - Check agent status
+- /translate <text> - Translate to English
+- /summarize <text> - Summarize text
+- /rewrite <text> - Improve text
+""",
+        "github": """# GitHub Agent
+
+## Instructions
+You are a GitHub automation agent. Handle repository tasks efficiently.
+
+## Tools Available
+- create_issue: Create new GitHub issues
+- summarize_pr: Summarize pull requests with LLM
+- repo_stats: Get repository statistics
+- list_issues: List open issues
+
+## Monitored Repos
+[Add repos here, one per line with - prefix]
 
 ## Memory
-[Accumulated learnings from past runs]
+[Past interactions and learnings]
+""",
+        "data": """# Data Agent
 
-## Error History
-[Past errors and how they were resolved]
+## Instructions
+You are a data analysis agent. Generate reports and insights.
 
-## Current Plan
-- Respond helpfully to user messages
-- Learn from interactions
-""")
+## Tools Available
+- daily_summary: Generate daily activity summary
+- analyze_data: Analyze provided data with LLM
+- generate_report: Create formatted reports
+
+## Schedule
+- Daily summary: 8 AM ICT (1 AM UTC)
+
+## Memory
+[Past reports and patterns]
+""",
+        "content": """# Content Agent
+
+## Instructions
+You are a content generation agent. Write, translate, and transform text.
+
+## Tools Available
+- write_content: Generate new content on any topic
+- translate: Translate between languages
+- summarize: Summarize long text
+- rewrite: Improve and rewrite text
+- email_draft: Draft professional emails
+
+## API Access
+- Telegram: /translate, /summarize, /rewrite commands
+- HTTP: POST /api/content with {action, ...params}
+
+## Memory
+[Content patterns and preferences]
+""",
+    }
+
+    created = []
+    for skill_name, content in skills.items():
+        skill_path = Path(f"/skills/{skill_name}/info.md")
+        if not skill_path.exists():
+            skill_path.parent.mkdir(parents=True, exist_ok=True)
+            skill_path.write_text(content)
+            created.append(f"{skill_name}/info.md")
+
+    if created:
         skills_volume.commit()
-        return {"status": "initialized", "files": ["telegram-chat/info.md"]}
+        return {"status": "initialized", "files": created}
 
-    return {"status": "already_initialized"}
+    return {"status": "already_initialized", "skills": list(skills.keys())}
 
 
 @app.function(
