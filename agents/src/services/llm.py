@@ -60,25 +60,25 @@ class LLMClient:
     ) -> str:
         """Send chat completion with automatic fallback.
 
-        Tries Z.AI first, falls back to Anthropic on failure.
+        Tries Anthropic (ai4u.now) first, falls back to Z.AI on failure.
         """
         errors = []
 
-        # Try Z.AI (OpenAI-compatible) first
-        if self.zai_client:
-            try:
-                return self._call_zai(messages, system, max_tokens, temperature)
-            except Exception as e:
-                logger.warning("zai_failed_fallback", error=str(e))
-                errors.append(f"Z.AI: {e}")
-
-        # Fallback to Anthropic-compatible
+        # Try Anthropic-compatible (ai4u.now) first - Primary
         if self.anthropic_client:
             try:
                 return self._call_anthropic(messages, system, max_tokens, temperature)
             except Exception as e:
-                logger.warning("anthropic_failed", error=str(e))
+                logger.warning("anthropic_failed_fallback", error=str(e))
                 errors.append(f"Anthropic: {e}")
+
+        # Fallback to Z.AI (OpenAI-compatible)
+        if self.zai_client:
+            try:
+                return self._call_zai(messages, system, max_tokens, temperature)
+            except Exception as e:
+                logger.warning("zai_failed", error=str(e))
+                errors.append(f"Z.AI: {e}")
 
         raise RuntimeError(f"All LLM providers failed: {errors}")
 
