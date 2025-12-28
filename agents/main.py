@@ -17,6 +17,7 @@ image = (
     .apt_install("git", "curl")
     .pip_install_from_requirements("requirements.txt")
     .add_local_dir("src", remote_path="/root/src")
+    .add_local_dir("skills", remote_path="/root/skills_source")  # For deploy-time sync
 )
 
 # Skills volume - stores mutable info.md files (II Framework: Information layer)
@@ -32,6 +33,7 @@ secrets = [
     modal.Secret.from_name("tavily-credentials"),
     modal.Secret.from_name("admin-credentials"),
     modal.Secret.from_name("groq-credentials"),
+    modal.Secret.from_name("gcp-credentials"),
 ]
 
 # GitHub secret (separate for security)
@@ -467,6 +469,57 @@ async def execute_skill_simple(skill_name: str, task: str, context: dict) -> str
     """Execute a skill directly."""
     from src.skills.registry import get_registry
     from src.services.llm import get_llm_client
+
+    # Handle Gemini skills specially
+    GEMINI_SKILLS = {
+        "gemini-deep-research",
+        "gemini-grounding",
+        "gemini-thinking",
+        "gemini-vision",
+    }
+
+    if skill_name in GEMINI_SKILLS:
+        from src.tools.gemini_tools import (
+            execute_deep_research,
+            execute_grounded_query,
+            execute_thinking,
+            execute_vision,
+        )
+        import json
+
+        user_id = context.get("user_id", 0)
+
+        if skill_name == "gemini-deep-research":
+            result = await execute_deep_research(
+                query=task,
+                user_id=user_id,
+                max_iterations=context.get("max_iterations", 10)
+            )
+        elif skill_name == "gemini-grounding":
+            result = await execute_grounded_query(query=task)
+        elif skill_name == "gemini-thinking":
+            result = await execute_thinking(
+                prompt=task,
+                thinking_level=context.get("thinking_level", "high")
+            )
+        elif skill_name == "gemini-vision":
+            result = await execute_vision(
+                image_base64=context.get("image_base64", ""),
+                prompt=task,
+                media_type=context.get("media_type", "image/jpeg")
+            )
+
+        # Return formatted result
+        if result.get("success"):
+            if "report" in result:
+                return result["report"]
+            elif "answer" in result:
+                return result["answer"]
+            elif "analysis" in result:
+                return result["analysis"]
+            return json.dumps(result)
+        else:
+            return f"Error: {result.get('error', 'Unknown error')}"
 
     registry = get_registry()
     skill = registry.get_full(skill_name)
@@ -1790,6 +1843,111 @@ You are a content generation agent. Write, translate, and transform text.
     return {"status": "already_initialized", "skills": list(skills.keys())}
 
 
+# =============================================================================
+# SKILL SYNC FUNCTIONS
+# =============================================================================
+
+def _extract_section(content: str, section_name: str) -> str:
+    """Extract content of a markdown section."""
+    import re
+    pattern = rf"## {section_name}\n([\s\S]*?)(?=\n## |\Z)"
+    match = re.search(pattern, content)
+    return match.group(1).strip() if match else ""
+
+
+def _update_section(content: str, section_name: str, new_content: str) -> str:
+    """Update or append a markdown section."""
+    import re
+    pattern = rf"(## {section_name}\n)[\s\S]*?(?=\n## |\Z)"
+    replacement = f"## {section_name}\n\n{new_content}\n\n"
+    if re.search(pattern, content):
+        return re.sub(pattern, replacement, content)
+    return content.rstrip() + f"\n\n{replacement}"
+
+
+@app.function(
+    image=image,
+    volumes={"/skills": skills_volume},
+    timeout=120,
+)
+def sync_skills_from_local():
+    """Sync skills from container's skills_source to Modal Volume.
+
+    Called on deploy to ensure Volume has latest skill definitions.
+    Preserves Memory and Error History sections from Volume (runtime learnings).
+
+    Local-First Flow:
+    1. Local changes applied via pull-improvements.py
+    2. git commit && git push
+    3. modal deploy → this function syncs to Volume
+    4. Volume Memory/Error History preserved (runtime learnings)
+    """
+    import shutil
+    from pathlib import Path
+    import structlog
+
+    logger = structlog.get_logger()
+    source_dir = Path("/root/skills_source")
+    target_dir = Path("/skills")
+
+    if not source_dir.exists():
+        return {"status": "skipped", "reason": "No skills_source directory"}
+
+    synced = []
+    preserved_memory = []
+
+    for skill_dir in source_dir.iterdir():
+        if not skill_dir.is_dir() or skill_dir.name.startswith('.'):
+            continue
+
+        target_skill = target_dir / skill_dir.name
+        target_skill.mkdir(parents=True, exist_ok=True)
+
+        source_info = skill_dir / "info.md"
+        target_info = target_skill / "info.md"
+
+        if source_info.exists():
+            if target_info.exists():
+                # Preserve existing Memory and Error History from Volume
+                existing_content = target_info.read_text()
+                memory = _extract_section(existing_content, "Memory")
+                errors = _extract_section(existing_content, "Error History")
+
+                new_content = source_info.read_text()
+
+                # Preserve runtime learnings from Volume if they exist
+                if memory and "[Accumulated learnings" not in memory:
+                    new_content = _update_section(new_content, "Memory", memory)
+                    preserved_memory.append(skill_dir.name)
+                if errors and "[Past errors" not in errors:
+                    new_content = _update_section(new_content, "Error History", errors)
+
+                target_info.write_text(new_content)
+            else:
+                shutil.copy2(source_info, target_info)
+
+            synced.append(skill_dir.name)
+
+        # Sync scripts/ and references/ directories
+        for subdir in ["scripts", "references"]:
+            source_sub = skill_dir / subdir
+            if source_sub.exists():
+                target_sub = target_skill / subdir
+                if target_sub.exists():
+                    shutil.rmtree(target_sub)
+                shutil.copytree(source_sub, target_sub)
+
+    skills_volume.commit()
+    logger.info("skills_synced", count=len(synced), preserved=len(preserved_memory))
+
+    return {
+        "status": "synced",
+        "skills": synced,
+        "count": len(synced),
+        "preserved_memory": preserved_memory
+    }
+
+
 @app.function(
     image=image,
     secrets=secrets,
@@ -1914,8 +2072,23 @@ def test_llm():
 
 
 @app.local_entrypoint()
-def main():
-    """Local test entrypoint."""
+def main(sync: bool = False):
+    """Local entrypoint with optional skill sync.
+
+    Args:
+        sync: If True, sync skills from local to Volume before testing
+
+    Usage:
+        modal run main.py           # Test LLM only
+        modal run main.py --sync    # Sync skills then test
+        modal deploy main.py        # Deploy (skills bundled in image)
+    """
+    if sync:
+        print("Syncing skills to Volume...")
+        result = sync_skills_from_local.remote()
+        print(f"Sync result: {result}")
+        print()
+
     print("Testing LLM...")
     result = test_llm.remote()
     print(f"LLM test result: {result}")

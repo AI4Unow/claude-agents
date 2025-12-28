@@ -6,7 +6,7 @@ Multi-agent system using the **II Framework (Information & Implementation)** dep
 
 **Phase:** Production MVP
 **Deploy URL:** https://duc-a-nguyen--claude-agents-telegramchatagent-app.modal.run
-**Last Updated:** Dec 28, 2025
+**Last Updated:** Dec 29, 2025
 
 ### Key Features
 - 6 circuit breakers for external service resilience
@@ -331,14 +331,57 @@ python3 agents/scripts/local-executor.py --task <task_id>
 curl https://<modal-url>/api/task/<task_id>
 ```
 
-## Self-Improvement Loop
+## Self-Improvement Loop (Local-First)
 
-1. **Wake Up** - Cron or webhook trigger
-2. **Read** - Load `info.md` from Modal Volume
-3. **Execute** - Run task with LLM + tools
-4. **Evaluate** - Check results
-5. **Improve** - On error, LLM can rewrite `info.md`
-6. **Sleep** - Wait for next trigger
+Skills self-improve through error analysis with admin approval. **Source of truth:** Local `agents/skills/` (Git-tracked).
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   LOCAL-FIRST SELF-IMPROVEMENT FLOW                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. ERROR DETECTION        2. ADMIN APPROVAL      3. LOCAL APPLICATION      │
+│  ──────────────────        ─────────────────      ────────────────────      │
+│  Modal/Local Error    →    Telegram buttons   →   pull-improvements.py      │
+│  ↓                         [Approve] [Reject]     ↓                         │
+│  ImprovementService        ↓                      Apply to agents/skills/   │
+│  ↓                         Firebase               ↓                         │
+│  Firebase                  status: approved       Mark "applied"            │
+│  status: pending                                                             │
+│                                                                              │
+│  4. SYNC TO MODAL                                                            │
+│  ───────────────                                                             │
+│  git commit && git push → modal deploy → sync_skills_from_local()           │
+│  Skills bundled in image, synced to Modal Volume                            │
+│  (Runtime Memory/Error History preserved)                                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Improvement Commands
+
+```bash
+# Pull and apply approved improvements from Firebase
+python3 agents/scripts/pull-improvements.py           # Apply all
+python3 agents/scripts/pull-improvements.py --dry-run # Preview changes
+python3 agents/scripts/pull-improvements.py --list    # List pending
+
+# After applying improvements
+git add agents/skills/ && git commit -m "chore: apply skill improvements"
+git push
+modal deploy agents/main.py
+
+# Manual sync to Modal Volume
+modal run agents/main.py --sync
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/core/improvement.py` | Proposal generation & Firebase storage |
+| `scripts/pull-improvements.py` | Local application script |
+| `main.py:sync_skills_from_local()` | Deploy-time sync to Volume |
 
 ## Available Tools
 

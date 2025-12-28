@@ -266,10 +266,13 @@ Be concise and actionable. Focus on preventing this error in the future."""
             self.logger.error("proposal_store_failed", error=str(e))
             return proposal.id
 
-    async def apply_proposal(self, proposal_id: str, admin_id: int) -> bool:
-        """Apply approved proposal to skill info.md."""
+    async def approve_proposal(self, proposal_id: str, admin_id: int) -> bool:
+        """Mark proposal as approved (for local application later).
+
+        Local-First Flow: Admin approves → marked in Firebase →
+        local script pulls and applies to agents/skills/ → commit → deploy.
+        """
         import asyncio
-        from src.skills.registry import get_registry
 
         try:
             db = self._get_db()
@@ -284,36 +287,63 @@ Be concise and actionable. Focus on preventing this error in the future."""
             data = doc.to_dict()
             skill_name = data["skill_name"]
 
-            registry = get_registry()
-
-            # Add to memory
-            new_memory = data.get("current_memory", "")
-            if new_memory:
-                new_memory += "\n"
-            new_memory += data.get("proposed_memory_addition", "")
-            registry.update_memory(skill_name, new_memory)
-
-            # Add to error history
-            registry.add_error(
-                skill_name,
-                data.get("error_summary", "")[:50],
-                data.get("proposed_memory_addition", "")[:50]
-            )
-
-            # Update proposal status
+            # Mark as approved (NOT applied yet - local script will apply)
             await asyncio.to_thread(
                 lambda: db.collection(self.COLLECTION).document(proposal_id).update({
                     "status": "approved",
                     "admin_id": admin_id,
-                    "updated_at": datetime.now(timezone.utc).isoformat()
+                    "approved_at": datetime.now(timezone.utc).isoformat()
                 })
             )
 
-            self.logger.info("proposal_applied", id=proposal_id, skill=skill_name, admin=admin_id)
+            self.logger.info("proposal_approved", id=proposal_id, skill=skill_name, admin=admin_id)
             return True
         except Exception as e:
-            self.logger.error("apply_proposal_failed", error=str(e))
+            self.logger.error("approve_proposal_failed", error=str(e))
             return False
+
+    async def get_approved_proposals(self, limit: int = 50) -> list:
+        """Get approved (not yet applied) proposals for local application."""
+        import asyncio
+        try:
+            db = self._get_db()
+            docs = await asyncio.to_thread(
+                lambda: list(db.collection(self.COLLECTION)
+                    .where("status", "==", "approved")
+                    .order_by("approved_at")
+                    .limit(limit)
+                    .get())
+            )
+            return [ImprovementProposal.from_dict(doc.to_dict()) for doc in docs]
+        except Exception as e:
+            self.logger.error("get_approved_failed", error=str(e))
+            return []
+
+    async def mark_applied(self, proposal_id: str) -> bool:
+        """Mark proposal as applied (after local script applies it)."""
+        import asyncio
+        try:
+            db = self._get_db()
+            await asyncio.to_thread(
+                lambda: db.collection(self.COLLECTION).document(proposal_id).update({
+                    "status": "applied",
+                    "applied_at": datetime.now(timezone.utc).isoformat()
+                })
+            )
+            self.logger.info("proposal_marked_applied", id=proposal_id)
+            return True
+        except Exception as e:
+            self.logger.error("mark_applied_failed", error=str(e))
+            return False
+
+    # Keep legacy method for backwards compatibility
+    async def apply_proposal(self, proposal_id: str, admin_id: int) -> bool:
+        """Legacy: Approve proposal (renamed for clarity).
+
+        Note: This now only marks as approved. Use pull-improvements.py
+        to apply locally and commit to git.
+        """
+        return await self.approve_proposal(proposal_id, admin_id)
 
     async def reject_proposal(self, proposal_id: str, admin_id: int, reason: str = "") -> bool:
         """Reject a proposal."""

@@ -12,7 +12,7 @@ See [docs/project-overview-pdr.md](docs/project-overview-pdr.md) for full requir
 
 **Phase:** Production MVP
 **Deploy URL:** https://duc-a-nguyen--claude-agents-telegramchatagent-app.modal.run
-**Last Updated:** Dec 28, 2025
+**Last Updated:** Dec 29, 2025
 
 ## Build & Development Commands
 
@@ -72,14 +72,14 @@ See [docs/system-architecture.md](docs/system-architecture.md) for full architec
 ```
 
 **II Framework Pattern:** Each skill = `.md` (Information) + `.py` (Implementation)
-- `.md` → Modal Volume (mutable, self-improving)
+- `.md` → Local source of truth, synced to Modal Volume on deploy
 - `.py` → Modal Server (immutable after deploy)
 
 **Reliability Patterns:**
 - 6 circuit breakers (exa, tavily, firebase, qdrant, claude, telegram)
 - L1 TTL cache + L2 Firebase for state persistence
 - Execution tracing with tool-level timing
-- Self-improvement loop with admin approval
+- Self-improvement loop with admin approval (local-first)
 
 **Data Flow:**
 ```
@@ -194,6 +194,37 @@ Queued for local Claude Code execution:
 ```bash
 python3 agents/scripts/local-executor.py --poll --interval 30
 ```
+
+## Self-Improvement Workflow (Local-First)
+
+Skills self-improve through error analysis. Improvements flow: Local → GitHub → Modal.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  1. ERROR → Firebase    2. APPROVE → Firebase   3. APPLY → Local → Deploy  │
+│                                                                              │
+│  Modal/Local Error  →   Admin via Telegram  →   pull-improvements.py  →    │
+│  status: pending        status: approved        Apply to agents/skills/     │
+│                                                 git commit && git push      │
+│                                                 modal deploy main.py        │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key scripts:**
+```bash
+# Pull and apply approved improvements from Firebase
+python3 agents/scripts/pull-improvements.py           # Apply all
+python3 agents/scripts/pull-improvements.py --dry-run # Preview
+python3 agents/scripts/pull-improvements.py --list    # List pending
+
+# Sync skills to Modal Volume
+modal run agents/main.py --sync
+```
+
+**Key files:**
+- `src/core/improvement.py` - Proposal generation & Firebase storage
+- `scripts/pull-improvements.py` - Local application script
+- `main.py:sync_skills_from_local()` - Deploy-time sync
 
 ## API Endpoints
 

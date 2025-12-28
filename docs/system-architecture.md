@@ -220,54 +220,60 @@ Skill {
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Self-Improvement Loop
+## Self-Improvement Loop (Local-First)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    SELF-IMPROVEMENT (src/core/improvement.py)               │
+│              SELF-IMPROVEMENT (Local-First Architecture)                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  Error Detection (agentic.py)                                                │
+│  PHASE 1: ERROR DETECTION (Modal or Local)                                  │
+│  ─────────────────────────────────────────                                  │
+│  Error detected → ImprovementService.analyze_error()                        │
 │       │                                                                      │
+│       ├── Rate limit check (3/hour/skill)                                   │
+│       ├── Deduplication check (24h window)                                  │
 │       ▼                                                                      │
-│  ┌──────────────────────┐                                                    │
-│  │ ImprovementService   │                                                    │
-│  │ .analyze_error()     │                                                    │
-│  └──────────┬───────────┘                                                    │
-│             │                                                                │
-│             ├── Rate limit check (3/hour/skill)                             │
-│             │                                                                │
-│             ├── Deduplication check (24h window)                            │
-│             │                                                                │
-│             ▼                                                                │
-│  ┌──────────────────────┐                                                    │
-│  │ LLM Reflection       │ ← Analyze error + current skill                   │
-│  │ Generate proposal    │                                                    │
-│  └──────────┬───────────┘                                                    │
-│             │                                                                │
-│             ▼                                                                │
-│  ┌──────────────────────┐                                                    │
-│  │ Store in Firebase    │ ← skill_improvements collection                   │
-│  │ (status: pending)    │                                                    │
-│  └──────────┬───────────┘                                                    │
-│             │                                                                │
-│             ▼                                                                │
-│  ┌──────────────────────┐                                                    │
-│  │ Telegram Notification│ ← Admin ID from secrets                           │
-│  │ [Approve] [Reject]   │                                                    │
-│  └──────────┬───────────┘                                                    │
-│             │                                                                │
-│    ┌────────┴────────┐                                                       │
-│    ▼                 ▼                                                       │
-│  Approve          Reject                                                     │
-│    │                 │                                                       │
-│    ▼                 ▼                                                       │
-│  Update           Mark rejected                                              │
-│  info.md          in Firebase                                                │
-│  Commit Volume                                                               │
+│  LLM Reflection → Generate proposal → Firebase (status: pending)            │
+│                                                                              │
+│  PHASE 2: ADMIN APPROVAL (Telegram)                                         │
+│  ──────────────────────────────────                                         │
+│  Telegram notification → [Approve] [Reject]                                 │
+│       │                                                                      │
+│       ├── Approve → Firebase (status: approved)                             │
+│       └── Reject → Firebase (status: rejected)                              │
+│                                                                              │
+│  PHASE 3: LOCAL APPLICATION (Claude Code)                                   │
+│  ─────────────────────────────────────────                                  │
+│  python3 agents/scripts/pull-improvements.py                                │
+│       │                                                                      │
+│       ├── Fetch approved proposals from Firebase                            │
+│       ├── Apply to local agents/skills/*/info.md                            │
+│       └── Mark as "applied" in Firebase                                     │
+│                                                                              │
+│  PHASE 4: SYNC TO MODAL (Deploy)                                            │
+│  ───────────────────────────────                                            │
+│  git commit && git push                                                     │
+│  modal deploy agents/main.py                                                │
+│       │                                                                      │
+│       └── sync_skills_from_local() → Modal Volume                           │
+│           (preserves runtime Memory/Error History)                          │
+│                                                                              │
+│  KEY FILES:                                                                  │
+│  • src/core/improvement.py - Proposal generation & Firebase storage         │
+│  • scripts/pull-improvements.py - Local application script                  │
+│  • main.py:sync_skills_from_local() - Deploy-time sync to Volume           │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+**Improvement Status Flow:**
+```
+pending → approved → applied
+    └──→ rejected
+```
+
+**Source of Truth:** Local `agents/skills/` directory (Git-tracked)
 
 ## Tool System Architecture
 
