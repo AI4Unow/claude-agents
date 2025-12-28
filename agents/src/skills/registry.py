@@ -25,6 +25,7 @@ class SkillSummary:
     name: str
     description: str
     category: Optional[str] = None
+    deployment: str = "remote"  # "local" | "remote" | "both"
     path: Optional[Path] = None
 
 
@@ -142,6 +143,7 @@ class SkillRegistry:
             name=frontmatter.get('name', skill_dir.name),
             description=frontmatter.get('description', ''),
             category=frontmatter.get('category'),
+            deployment=frontmatter.get('deployment', 'remote'),
             path=skill_dir
         )
 

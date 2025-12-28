@@ -85,6 +85,61 @@ class LLMClient:
             logger.error("llm_error", error=str(e)[:100])
             raise
 
+    def chat_with_image(
+        self,
+        image_base64: str,
+        prompt: str,
+        media_type: str = "image/jpeg",
+        max_tokens: int = 1024
+    ) -> str:
+        """Send image to Claude Vision for analysis.
+
+        Args:
+            image_base64: Base64 encoded image
+            prompt: User prompt about the image
+            media_type: Image MIME type (default: image/jpeg)
+            max_tokens: Max response tokens
+
+        Returns:
+            Text response from Claude Vision
+        """
+        # Check circuit state before calling
+        if claude_circuit.state == CircuitState.OPEN:
+            cooldown = claude_circuit._cooldown_remaining()
+            logger.warning("claude_circuit_open", cooldown_remaining=cooldown)
+            raise CircuitOpenError("claude_api", cooldown)
+
+        try:
+            response = self.client.messages.create(
+                model="claude-sonnet-4-20250514",  # Use Sonnet for vision
+                max_tokens=max_tokens,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": image_base64,
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ]
+                }]
+            )
+            claude_circuit._record_success()
+            logger.info("vision_success", model="claude-sonnet-4")
+            return response.content[0].text
+
+        except Exception as e:
+            claude_circuit._record_failure(e)
+            logger.error("vision_error", error=str(e)[:100])
+            raise
+
 
 # Global client instance
 _client: Optional[LLMClient] = None

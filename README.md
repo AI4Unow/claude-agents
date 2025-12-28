@@ -206,7 +206,8 @@ modal app logs claude-agents
 | `/webhook/telegram` | POST | Telegram bot webhook |
 | `/webhook/github` | POST | GitHub webhook |
 | `/api/skill` | POST | Execute skill (simple/routed/orchestrated/chained/evaluated) |
-| `/api/skills` | GET | List available skills |
+| `/api/skills` | GET | List available skills with deployment info |
+| `/api/task/{id}` | GET | Get local task status and result |
 | `/api/content` | POST | Content generation API |
 | `/api/traces` | GET | Execution traces (admin) |
 | `/api/circuits` | GET | Circuit breaker status |
@@ -222,6 +223,112 @@ curl -X POST https://<modal-url>/api/skill \
 # Routed execution (auto-selects best skill)
 curl -X POST https://<modal-url>/api/skill \
   -d '{"task": "Debug this error", "mode": "routed"}'
+```
+
+## Hybrid Skill Architecture
+
+Skills are categorized by deployment type using the `deployment` field in YAML frontmatter:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      HYBRID LOCAL + MODAL DEPLOYMENT                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  LOCAL (Claude Code)                    REMOTE (Modal.com)                   │
+│  ───────────────────                    ──────────────────                   │
+│  • Runs on your machine                 • Runs on Modal serverless           │
+│  • Browser automation                   • API-based operations               │
+│  • Consumer IP required                 • Always available                   │
+│  • Desktop apps access                  • Scalable & cost-effective          │
+│                                                                              │
+│  ┌─────────────────────┐               ┌─────────────────────┐              │
+│  │ 8 LOCAL SKILLS      │               │ 16 REMOTE SKILLS    │              │
+│  ├─────────────────────┤               ├─────────────────────┤              │
+│  │ • canvas-design     │               │ • telegram-chat     │              │
+│  │ • docx              │               │ • github            │              │
+│  │ • image-enhancer    │               │ • planning          │              │
+│  │ • media-processing  │               │ • debugging         │              │
+│  │ • pdf               │               │ • code-review       │              │
+│  │ • pptx              │               │ • research          │              │
+│  │ • video-downloader  │               │ • backend-dev       │              │
+│  │ • xlsx              │               │ • frontend-dev      │              │
+│  └─────────────────────┘               │ • mobile-dev        │              │
+│                                        │ • ui-ux-pro-max     │              │
+│  Why Local?                            │ • ui-styling        │              │
+│  • TikTok, Facebook, YouTube           │ • ai-multimodal     │              │
+│  • LinkedIn automation                 │ • ai-artist         │              │
+│  • Desktop app control                 │ • data, content     │              │
+│  • Browser with consumer IP            └─────────────────────┘              │
+│                                                                              │
+│  SYNC: Claude Code → GitHub → Modal Volume (one-way)                        │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Skill YAML Frontmatter
+
+```yaml
+---
+name: skill-name
+description: Brief description for routing
+category: development|design|media|document
+deployment: local|remote|both    # ← Determines where skill runs
+---
+```
+
+## Skill Invocation Flow
+
+### Remote Skills (Modal.com)
+Remote skills execute directly on Modal serverless:
+
+```
+User Request → /api/skill → is_local_skill()=False → execute_skill_simple() → Response
+```
+
+**Example:**
+```bash
+curl -X POST https://<modal-url>/api/skill \
+  -H "Content-Type: application/json" \
+  -d '{"skill": "planning", "task": "Create auth plan", "mode": "simple"}'
+```
+
+### Local Skills (Firebase Task Queue)
+Local skills are queued to Firebase and executed by Claude Code locally:
+
+```
+┌──────────────┐     ┌──────────────────┐     ┌────────────────────┐
+│ User Request │────►│ Modal.com        │────►│ Firebase           │
+│ (Telegram)   │     │ is_local_skill() │     │ task_queue         │
+└──────────────┘     │ = True           │     │ status: pending    │
+                     └──────────────────┘     └─────────┬──────────┘
+                              │                         │
+                     Notify: "Task queued"              │ Poll (30s)
+                              │                         ▼
+                     ┌────────▼─────────┐     ┌────────────────────┐
+                     │ User notified    │◄────│ Claude Code        │
+                     │ with result      │     │ local-executor.py  │
+                     └──────────────────┘     └────────────────────┘
+```
+
+**Running Local Executor:**
+```bash
+# One-time execution
+python3 agents/scripts/local-executor.py
+
+# Continuous polling (30s interval)
+python3 agents/scripts/local-executor.py --poll
+
+# Custom interval
+python3 agents/scripts/local-executor.py --poll --interval 60
+
+# Execute specific task
+python3 agents/scripts/local-executor.py --task <task_id>
+```
+
+**Task Queue API:**
+```bash
+# Check task status
+curl https://<modal-url>/api/task/<task_id>
 ```
 
 ## Self-Improvement Loop

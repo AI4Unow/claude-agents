@@ -18,6 +18,7 @@ async def run_agentic_loop(
     system: Optional[str] = None,
     user_id: Optional[int] = None,
     skill: Optional[str] = None,
+    progress_callback: Optional[callable] = None,
 ) -> str:
     """Run agentic loop with tool execution, conversation persistence, and tracing.
 
@@ -26,6 +27,7 @@ async def run_agentic_loop(
         system: System prompt
         user_id: Telegram user ID for conversation persistence
         skill: Skill name for trace metadata
+        progress_callback: Optional async callback for progress updates
 
     Returns:
         Final text response
@@ -38,6 +40,8 @@ async def run_agentic_loop(
                 system=system,
                 user_id=user_id,
                 trace_ctx=trace_ctx,
+                progress_callback=progress_callback,
+                skill=skill,
             )
             trace_ctx.set_output(result)
             return result
@@ -53,6 +57,8 @@ async def _execute_loop(
     system: Optional[str],
     user_id: Optional[int],
     trace_ctx: TraceContext,
+    progress_callback: Optional[callable] = None,
+    skill: Optional[str] = None,
 ) -> str:
     """Internal loop execution with trace capture."""
     # Initialize tools
@@ -110,6 +116,13 @@ async def _execute_loop(
             for block in response.content:
                 if block.type == "tool_use":
                     logger.info("tool_call", name=block.name, input=str(block.input)[:50])
+
+                    # Report progress if callback provided
+                    if progress_callback:
+                        try:
+                            await progress_callback(f"🔧 Running <code>{block.name}</code>...")
+                        except Exception:
+                            pass  # Non-blocking
 
                     # Execute with timing for trace
                     start_time = time.monotonic()

@@ -126,6 +126,75 @@ See [docs/code-standards.md](docs/code-standards.md) for conventions.
 - Progressive disclosure for skill loading
 - L1 TTL cache + L2 Firebase for state
 
+## Hybrid Skill Architecture
+
+Skills use `deployment` field in YAML frontmatter to determine execution environment:
+
+```
+LOCAL SKILLS (8)                    REMOTE SKILLS (16)
+────────────────                    ──────────────────
+Run via Claude Code                 Run on Modal.com
+• canvas-design                     • telegram-chat, github
+• docx, xlsx, pptx, pdf             • planning, debugging, code-review
+• media-processing                  • research, backend-dev, frontend-dev
+• image-enhancer                    • mobile-dev, ui-ux-pro-max
+• video-downloader                  • ui-styling, ai-multimodal, ai-artist
+                                    • data, content
+
+Why local?                          Why remote?
+• Browser automation needed         • API-based, no browser needed
+• Consumer IP required              • Always available 24/7
+• TikTok, Facebook, YouTube, etc.   • Scalable serverless
+```
+
+**Skill frontmatter:**
+```yaml
+---
+name: skill-name
+description: Brief description
+category: development|design|media|document
+deployment: local|remote|both    # ← Determines execution environment
+---
+```
+
+**Sync flow:** Claude Code → GitHub → Modal Volume (one-way)
+
+## Skill Invocation Flow
+
+### Remote Skills (Modal.com)
+Direct execution on Modal serverless:
+```
+User Request → /api/skill → is_local_skill()=False → execute_skill_simple() → Response
+```
+
+### Local Skills (Firebase Task Queue)
+Queued for local Claude Code execution:
+```
+┌──────────────┐     ┌──────────────────┐     ┌────────────────────┐
+│ User Request │────►│ Modal.com        │────►│ Firebase           │
+│ (Telegram)   │     │ is_local_skill() │     │ task_queue         │
+└──────────────┘     │ = True           │     │ status: pending    │
+                     └──────────────────┘     └─────────┬──────────┘
+                              │                         │
+                     Notify: "Task queued"              │ Poll (30s)
+                              │                         ▼
+                     ┌────────▼─────────┐     ┌────────────────────┐
+                     │ User notified    │◄────│ Claude Code        │
+                     │ with result      │     │ local-executor.py  │
+                     └──────────────────┘     └────────────────────┘
+```
+
+**Key files:**
+- `main.py:40-54` - `is_local_skill()` detection
+- `main.py:272-291` - Queue to Firebase if local
+- `src/services/firebase.py:563-827` - Task queue CRUD
+- `scripts/local-executor.py` - Polling executor
+
+**Run local executor:**
+```bash
+python3 agents/scripts/local-executor.py --poll --interval 30
+```
+
 ## API Endpoints
 
 | Endpoint | Purpose |
@@ -134,6 +203,8 @@ See [docs/code-standards.md](docs/code-standards.md) for conventions.
 | `/webhook/telegram` | Telegram bot webhook |
 | `/webhook/github` | GitHub webhook |
 | `/api/skill` | Execute skill (5 modes) |
+| `/api/skills` | List skills with deployment info |
+| `/api/task/{id}` | Get local task status/result |
 | `/api/traces` | Execution traces (admin) |
 | `/api/circuits` | Circuit breaker status |
 

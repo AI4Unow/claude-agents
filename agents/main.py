@@ -31,10 +31,58 @@ secrets = [
     modal.Secret.from_name("exa-credentials"),
     modal.Secret.from_name("tavily-credentials"),
     modal.Secret.from_name("admin-credentials"),
+    modal.Secret.from_name("groq-credentials"),
 ]
 
 # GitHub secret (separate for security)
 github_secret = modal.Secret.from_name("github-credentials")
+
+
+def is_local_skill(skill_name: str) -> bool:
+    """Check if skill requires local execution.
+
+    Returns True if skill's deployment field is 'local'.
+    Skills with 'remote' or 'both' are executed on Modal.
+    """
+    from src.skills.registry import get_registry
+
+    registry = get_registry()
+    summaries = registry.discover()
+
+    for s in summaries:
+        if s.name == skill_name:
+            return s.deployment == "local"
+    return False
+
+
+async def notify_task_queued(user_id: int, skill_name: str, task_id: str):
+    """Notify user that task was queued for local execution."""
+    import httpx
+
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not bot_token or not user_id:
+        return
+
+    message = (
+        f"⏳ *Task Queued*\n\n"
+        f"Skill: `{skill_name}`\n"
+        f"Task ID: `{task_id[:8]}...`\n\n"
+        f"This skill requires local execution. "
+        f"You'll be notified when it completes."
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={
+                    "chat_id": user_id,
+                    "text": message,
+                    "parse_mode": "Markdown"
+                }
+            )
+    except Exception:
+        pass  # Non-blocking, log errors elsewhere
 
 
 def create_web_app():
@@ -168,16 +216,58 @@ def create_web_app():
             text = message.get("text", "")
             user = message.get("from", {})
 
-            if not chat_id or not text:
+            if not chat_id:
+                return {"ok": True}
+
+            # Handle voice messages
+            voice = message.get("voice")
+            if voice:
+                file_id = voice.get("file_id")
+                duration = voice.get("duration", 0)
+                response = await handle_voice_message(file_id, duration, user, chat_id)
+                if response:
+                    await send_telegram_message(chat_id, response)
+                return {"ok": True}
+
+            # Handle photo messages
+            photo = message.get("photo")
+            if photo:
+                # Photo array is sorted by size, get largest (up to 1280px per validation)
+                file_id = photo[-1].get("file_id")
+                caption = message.get("caption", "")
+                response = await handle_image_message(file_id, caption, user, chat_id)
+                if response:
+                    await send_telegram_message(chat_id, response)
+                return {"ok": True}
+
+            # Handle document messages
+            document = message.get("document")
+            if document:
+                file_id = document.get("file_id")
+                file_name = document.get("file_name", "document")
+                mime_type = document.get("mime_type", "")
+                caption = message.get("caption", "")
+                response = await handle_document_message(
+                    file_id, file_name, mime_type, caption, user, chat_id
+                )
+                if response:
+                    await send_telegram_message(chat_id, response)
+                return {"ok": True}
+
+            # Skip if no text
+            if not text:
                 return {"ok": True}
 
             logger.info("processing_message", chat_id=chat_id, text_len=len(text))
+
+            # Get message_id for reactions
+            message_id = message.get("message_id")
 
             # Handle commands
             if text.startswith("/"):
                 response = await handle_command(text, user, chat_id)
             else:
-                response = await process_message(text, user, chat_id)
+                response = await process_message(text, user, chat_id, message_id)
 
             # Response may be None if already sent (e.g., keyboard)
             if response:
@@ -255,6 +345,7 @@ def create_web_app():
         """
         import structlog
         import time
+        from src.services.firebase import create_local_task
         logger = structlog.get_logger()
 
         try:
@@ -263,8 +354,31 @@ def create_web_app():
             task = payload.get("task", "")
             context = payload.get("context", {})
             mode = payload.get("mode", "simple")
+            user_id = context.get("user_id", 0)
 
             logger.info("skill_api", skill=skill_name, mode=mode, task_len=len(task))
+
+            # Check if local skill - queue to Firebase instead of executing
+            if is_local_skill(skill_name):
+                task_id = await create_local_task(
+                    skill=skill_name,
+                    task=task,
+                    user_id=user_id
+                )
+
+                logger.info("local_skill_queued", skill=skill_name, task_id=task_id)
+
+                # Notify user if we have user_id
+                if user_id:
+                    await notify_task_queued(user_id, skill_name, task_id)
+
+                return {
+                    "ok": True,
+                    "queued": True,
+                    "task_id": task_id,
+                    "skill": skill_name,
+                    "message": f"Skill '{skill_name}' queued for local execution"
+                }
 
             start = time.time()
 
@@ -314,10 +428,36 @@ def create_web_app():
         return {
             "ok": True,
             "skills": [
-                {"name": s.name, "description": s.description}
+                {
+                    "name": s.name,
+                    "description": s.description,
+                    "deployment": s.deployment
+                }
                 for s in summaries
             ],
             "count": len(summaries)
+        }
+
+    @web_app.get("/api/task/{task_id}")
+    async def get_task_status(task_id: str):
+        """Get local task status."""
+        from src.services.firebase import get_task_result
+
+        task = await get_task_result(task_id)
+        if not task:
+            return {"ok": False, "error": "Task not found"}
+
+        return {
+            "ok": True,
+            "task": {
+                "id": task["id"],
+                "skill": task.get("skill"),
+                "status": task.get("status"),
+                "result": task.get("result"),
+                "error": task.get("error"),
+                "created_at": task.get("created_at"),
+                "completed_at": task.get("completed_at")
+            }
         }
 
     return web_app
@@ -421,7 +561,9 @@ async def handle_command(command: str, user: dict, chat_id: int) -> str:
             "/clear - Clear conversation history\n"
             "/translate &lt;text&gt; - Translate to English\n"
             "/summarize &lt;text&gt; - Summarize text\n"
-            "/rewrite &lt;text&gt; - Improve text"
+            "/rewrite &lt;text&gt; - Improve text\n"
+            "/remind &lt;time&gt; &lt;message&gt; - Set reminder (admin)\n"
+            "/reminders - List pending reminders (admin)"
         )
 
     elif cmd == "/status":
@@ -515,12 +657,361 @@ async def handle_command(command: str, user: dict, chat_id: int) -> str:
     elif cmd in ["/translate", "/summarize", "/rewrite"]:
         return f"Usage: {cmd} &lt;text&gt;"
 
+    elif cmd == "/remind":
+        # Admin only - check permission
+        admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
+        if str(user.get("id")) != str(admin_id):
+            return "⛔ This command is admin only."
+
+        if not args:
+            return (
+                "Usage: /remind <time> <message>\n"
+                "Examples:\n"
+                "  /remind 1h Check the deployment\n"
+                "  /remind 30m Call mom\n"
+                "  /remind 2d Review code"
+            )
+
+        # Parse time and message
+        remind_parts = args.split(maxsplit=1)
+        if len(remind_parts) < 2:
+            return "Please provide both time and message."
+
+        time_str, message = remind_parts
+        due_at = parse_reminder_time(time_str)
+
+        if not due_at:
+            return f"Invalid time format: {time_str}. Use: 30m, 2h, 1d"
+
+        # Store reminder
+        from src.services.firebase import create_reminder
+        reminder_id = await create_reminder(
+            user_id=user.get("id"),
+            chat_id=chat_id,
+            message=message,
+            due_at=due_at
+        )
+
+        return f"⏰ Reminder set for {due_at.strftime('%Y-%m-%d %H:%M UTC')}\nID: {reminder_id[:8]}..."
+
+    elif cmd == "/reminders":
+        # Admin only - check permission
+        admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
+        if str(user.get("id")) != str(admin_id):
+            return "⛔ This command is admin only."
+
+        from src.services.firebase import get_user_reminders
+
+        reminders = await get_user_reminders(user.get("id"), limit=10)
+
+        if not reminders:
+            return "No pending reminders. Use /remind to create one."
+
+        lines = ["<b>Your Reminders:</b>\n"]
+        for r in reminders:
+            due = r.get("due_at")
+            if hasattr(due, "strftime"):
+                due_str = due.strftime("%m/%d %H:%M")
+            else:
+                due_str = str(due)[:16]
+            msg = r.get("message", "")[:30]
+            lines.append(f"• {due_str} - {msg}...")
+
+        return "\n".join(lines)
+
     else:
         return "Unknown command. Try /help"
 
 
-async def process_message(text: str, user: dict, chat_id: int) -> str:
+def parse_reminder_time(time_str: str):
+    """Parse relative time string like '30m', '2h', '1d'."""
+    import re
+    from datetime import datetime, timedelta, timezone
+
+    match = re.match(r"(\d+)([mhd])", time_str.lower())
+    if not match:
+        return None
+
+    amount = int(match.group(1))
+    unit = match.group(2)
+
+    now = datetime.now(timezone.utc)
+
+    if unit == "m":
+        return now + timedelta(minutes=amount)
+    elif unit == "h":
+        return now + timedelta(hours=amount)
+    elif unit == "d":
+        return now + timedelta(days=amount)
+
+    return None
+
+
+async def handle_voice_message(
+    file_id: str,
+    duration: int,
+    user: dict,
+    chat_id: int
+) -> str:
+    """Process voice message: download, transcribe, process."""
+    from src.services.media import download_telegram_file, transcribe_audio_groq
+    import structlog
+
+    logger = structlog.get_logger()
+    logger.info("voice_message", duration=duration, user=user.get("id"))
+
+    # Show recording action while downloading
+    await send_chat_action(chat_id, "record_voice")
+
+    try:
+        # Check duration limit (validated: 60s max)
+        if duration > 60:
+            return "⚠️ Voice message too long. Maximum is 60 seconds."
+
+        # Download
+        audio_bytes = await download_telegram_file(file_id)
+
+        # Show typing while transcribing
+        await send_chat_action(chat_id, "typing")
+
+        # Transcribe with Groq Whisper
+        text = await transcribe_audio_groq(audio_bytes, duration)
+
+        if not text or text.strip() == "":
+            return "I couldn't understand the audio. Please try again."
+
+        # Send transcription to user
+        transcription_preview = text[:200] + "..." if len(text) > 200 else text
+        await send_telegram_message(
+            chat_id,
+            f"🎤 <i>Transcribed:</i>\n{transcription_preview}"
+        )
+
+        # Process through normal message handler
+        return await process_message(text, user, chat_id)
+
+    except Exception as e:
+        logger.error("voice_error", error=str(e))
+        return f"Sorry, I couldn't process your voice message: {str(e)[:100]}"
+
+
+async def handle_image_message(
+    file_id: str,
+    caption: str,
+    user: dict,
+    chat_id: int
+) -> str:
+    """Process image with Claude Vision."""
+    from src.services.media import download_telegram_file, encode_image_base64
+    from src.services.llm import get_llm_client
+    import structlog
+
+    logger = structlog.get_logger()
+    logger.info("image_message", user=user.get("id"))
+
+    await send_chat_action(chat_id, "typing")
+
+    try:
+        # Download image
+        image_bytes = await download_telegram_file(file_id)
+        image_b64 = encode_image_base64(image_bytes)
+
+        # Default prompt if no caption
+        prompt = caption if caption else "What's in this image? Describe it in detail."
+
+        # Call Claude with Vision
+        llm = get_llm_client()
+        response = llm.chat_with_image(
+            image_base64=image_b64,
+            prompt=prompt,
+            max_tokens=1024
+        )
+
+        return response
+
+    except Exception as e:
+        logger.error("image_error", error=str(e))
+        return "Sorry, I couldn't process the image."
+
+
+async def handle_document_message(
+    file_id: str,
+    file_name: str,
+    mime_type: str,
+    caption: str,
+    user: dict,
+    chat_id: int
+) -> str:
+    """Process document: extract text and analyze."""
+    from src.services.media import download_telegram_file, extract_pdf_text
+    import structlog
+
+    logger = structlog.get_logger()
+    logger.info("document_message", file_name=file_name, mime=mime_type)
+
+    await send_chat_action(chat_id, "typing")
+
+    # Supported text formats
+    text_formats = ["text/plain", "text/markdown", "application/json"]
+    pdf_formats = ["application/pdf"]
+
+    try:
+        doc_bytes = await download_telegram_file(file_id)
+
+        if mime_type in text_formats or file_name.endswith(('.txt', '.md', '.json')):
+            text = doc_bytes.decode("utf-8")
+        elif mime_type in pdf_formats or file_name.endswith('.pdf'):
+            text = await extract_pdf_text(doc_bytes)
+        else:
+            return f"Sorry, I can't process {mime_type or 'this'} files yet. Supported: txt, md, json, pdf"
+
+        # Process with caption as instruction
+        if caption and text:
+            prompt = f"{caption}\n\nDocument content:\n{text}"
+        elif caption:
+            prompt = caption
+        else:
+            prompt = f"Analyze this document:\n\n{text}"
+
+        return await process_message(prompt, user, chat_id)
+
+    except Exception as e:
+        logger.error("document_error", error=str(e))
+        return "Sorry, I couldn't process the document."
+
+
+async def send_chat_action(chat_id: int, action: str):
+    """Send chat action (typing, upload_photo, record_voice, etc.)."""
+    import httpx
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"https://api.telegram.org/bot{token}/sendChatAction",
+                json={"chat_id": chat_id, "action": action}
+            )
+    except Exception:
+        pass  # Non-blocking
+
+
+async def set_message_reaction(chat_id: int, message_id: int, emoji: str = "👀"):
+    """Set reaction emoji on a message."""
+    import httpx
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"https://api.telegram.org/bot{token}/setMessageReaction",
+                json={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "reaction": [{"type": "emoji", "emoji": emoji}],
+                    "is_big": False
+                }
+            )
+    except Exception:
+        pass  # Non-blocking, ignore failures
+
+
+async def send_progress_message(chat_id: int, text: str) -> int:
+    """Send progress message and return message_id for editing."""
+    import httpx
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": text,
+                    "parse_mode": "HTML"
+                }
+            )
+            result = resp.json()
+            return result.get("result", {}).get("message_id", 0)
+    except Exception:
+        return 0
+
+
+async def edit_progress_message(chat_id: int, message_id: int, text: str):
+    """Edit progress message with new status."""
+    import httpx
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+    if not message_id:
+        return
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            await client.post(
+                f"https://api.telegram.org/bot{token}/editMessageText",
+                json={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "text": text,
+                    "parse_mode": "HTML"
+                }
+            )
+    except Exception:
+        pass  # Non-blocking
+
+
+async def send_typing_action(chat_id: int):
+    """Send typing indicator to show bot is processing."""
+    import httpx
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"https://api.telegram.org/bot{token}/sendChatAction",
+                json={"chat_id": chat_id, "action": "typing"}
+            )
+    except Exception:
+        pass  # Non-blocking, ignore failures
+
+
+async def typing_indicator(chat_id: int, cancel_event):
+    """Send typing indicator every 4 seconds until cancelled."""
+    import asyncio
+
+    while not cancel_event.is_set():
+        await send_typing_action(chat_id)
+        try:
+            await asyncio.wait_for(cancel_event.wait(), timeout=4.0)
+        except asyncio.TimeoutError:
+            continue
+
+
+ERROR_SUGGESTIONS = {
+    "timeout": "Try again or simplify your request.",
+    "circuit_open": "Service temporarily unavailable. Try in 30 seconds.",
+    "rate_limit": "Too many requests. Please wait a moment.",
+    "connection": "Network issue. Please try again.",
+    "max_iterations": "Request was too complex. Try breaking it down.",
+}
+
+
+def format_error_message(error: str) -> str:
+    """Format error with helpful suggestion."""
+    error_lower = error.lower()
+    for key, suggestion in ERROR_SUGGESTIONS.items():
+        if key in error_lower:
+            return f"❌ {error}\n\n💡 {suggestion}"
+    return "❌ Sorry, something went wrong. Please try again."
+
+
+async def process_message(
+    text: str,
+    user: dict,
+    chat_id: int,
+    message_id: int = None
+) -> str:
     """Process a regular message with agentic loop (tools enabled)."""
+    import asyncio
     from src.services.agentic import run_agentic_loop
     from src.core.state import get_state_manager
     from pathlib import Path
@@ -531,40 +1022,85 @@ async def process_message(text: str, user: dict, chat_id: int) -> str:
     logger = structlog.get_logger()
     state = get_state_manager()
 
+    # React to acknowledge receipt
+    if message_id:
+        await set_message_reaction(chat_id, message_id, "👀")
+
+    # Send initial progress message
+    progress_msg_id = await send_progress_message(chat_id, "⏳ <i>Processing...</i>")
+
+    # Create progress callback for tool updates
+    async def update_progress(status: str):
+        await edit_progress_message(chat_id, progress_msg_id, status)
+
+    # Start typing indicator
+    cancel_event = asyncio.Event()
+    typing_task = asyncio.create_task(typing_indicator(chat_id, cancel_event))
+
     # Check for pending skill (user selected from /skills menu)
     pending_skill = await state.get_pending_skill(user.get("id"))
 
-    if pending_skill:
-        # Execute pending skill with this message as task
-        await state.clear_pending_skill(user.get("id"))
-
-        start = time.time()
-        result = await execute_skill_simple(pending_skill, text, {"user": user})
-        duration_ms = int((time.time() - start) * 1000)
-
-        from src.services.telegram import format_skill_result
-        return format_skill_result(pending_skill, result, duration_ms)
-
-    # Normal agentic loop
-    # Read instructions from skills volume (async to avoid blocking)
-    info_path = Path("/skills/telegram-chat/info.md")
-    system_prompt = "You are a helpful AI assistant with web search capability. Use the web_search tool when users ask about current events, weather, news, prices, or anything requiring up-to-date information."
-
-    if info_path.exists():
-        async with aiofiles.open(info_path, 'r') as f:
-            system_prompt = await f.read()
-
     try:
+        if pending_skill:
+            # Execute pending skill with this message as task
+            await state.clear_pending_skill(user.get("id"))
+
+            start = time.time()
+            result = await execute_skill_simple(pending_skill, text, {"user": user})
+            duration_ms = int((time.time() - start) * 1000)
+
+            # Success reaction
+            if message_id:
+                await set_message_reaction(chat_id, message_id, "✅")
+
+            # Update progress with completion (keep as history per validation)
+            await edit_progress_message(chat_id, progress_msg_id, "✅ <i>Complete</i>")
+
+            from src.services.telegram import format_skill_result
+            return format_skill_result(pending_skill, result, duration_ms)
+
+        # Normal agentic loop
+        # Read instructions from skills volume (async to avoid blocking)
+        info_path = Path("/skills/telegram-chat/info.md")
+        system_prompt = "You are a helpful AI assistant with web search capability. Use the web_search tool when users ask about current events, weather, news, prices, or anything requiring up-to-date information."
+
+        if info_path.exists():
+            async with aiofiles.open(info_path, 'r') as f:
+                system_prompt = await f.read()
+
         response = await run_agentic_loop(
             user_message=text,
             system=system_prompt,
             user_id=user.get("id"),
             skill=pending_skill,  # Pass skill name for tracing
+            progress_callback=update_progress,
         )
+
+        # Success reaction
+        if message_id:
+            await set_message_reaction(chat_id, message_id, "✅")
+
+        # Update progress with completion (keep as history per validation)
+        await edit_progress_message(chat_id, progress_msg_id, "✅ <i>Complete</i>")
+
         return response
+
     except Exception as e:
         logger.error("agentic_error", error=str(e))
-        return f"Sorry, I encountered an error processing your request."
+
+        # Error reaction
+        if message_id:
+            await set_message_reaction(chat_id, message_id, "❌")
+
+        # Update progress with error
+        await edit_progress_message(chat_id, progress_msg_id, f"❌ <i>Error: {str(e)[:100]}</i>")
+
+        return format_error_message(str(e))
+
+    finally:
+        # Stop typing indicator
+        cancel_event.set()
+        typing_task.cancel()
 
 
 async def send_telegram_message(chat_id: int, text: str, parse_mode: str = "HTML"):
@@ -1094,6 +1630,47 @@ async def daily_summary():
 
     logger.info("daily_summary_complete", status=result.get("status"))
     return result
+
+
+# ==================== Reminder Cron ====================
+
+@app.function(
+    image=image,
+    secrets=secrets,
+    schedule=modal.Cron("*/5 * * * *"),  # Every 5 minutes
+    timeout=60,
+)
+async def send_due_reminders():
+    """Check for due reminders and send them."""
+    import structlog
+    from src.services.firebase import (
+        init_firebase, get_due_reminders, mark_reminder_sent
+    )
+
+    logger = structlog.get_logger()
+    init_firebase()
+
+    try:
+        reminders = await get_due_reminders()
+        logger.info("checking_reminders", count=len(reminders))
+
+        for reminder in reminders:
+            chat_id = reminder.get("chat_id")
+            message = reminder.get("message")
+            reminder_id = reminder.get("id")
+
+            # Send notification
+            await send_telegram_message(
+                chat_id,
+                f"⏰ <b>Reminder</b>\n\n{message}"
+            )
+
+            # Mark as sent
+            await mark_reminder_sent(reminder_id)
+            logger.info("reminder_sent", id=reminder_id)
+
+    except Exception as e:
+        logger.error("reminder_error", error=str(e))
 
 
 # ==================== Content Agent ====================

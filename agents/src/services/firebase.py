@@ -9,7 +9,8 @@ II Framework Temporal Schema:
 """
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -541,4 +542,459 @@ async def keyword_search(
     # Sort by score and limit
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:limit]
+
+
+# ==================== Local Task Queue ====================
+
+@dataclass
+class LocalTask:
+    """Local skill execution task."""
+    task_id: str
+    skill: str
+    task: str
+    user_id: int
+    status: str  # pending, processing, completed, failed
+    created_at: datetime
+    result: Optional[str] = None
+    error: Optional[str] = None
+    retry_count: int = 0
+
+
+async def create_local_task(
+    skill: str,
+    task: str,
+    user_id: int
+) -> str:
+    """Create a new local task. Returns task_id.
+
+    Args:
+        skill: Local skill name (e.g., 'pdf', 'docx')
+        task: Task description/prompt
+        user_id: Telegram user ID for notifications
+
+    Returns:
+        Task ID (Firebase document ID)
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        logger.warning("firebase_circuit_open", operation="create_local_task")
+        raise CircuitOpenError("firebase", firebase_circuit._cooldown_remaining())
+
+    try:
+        db = get_db()
+        doc_ref = db.collection("task_queue").document()
+        doc_ref.set({
+            "skill": skill,
+            "task": task,
+            "user_id": user_id,
+            "deployment": "local",
+            "status": "pending",
+            "created_at": firestore.SERVER_TIMESTAMP,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+            "retry_count": 0
+        })
+        firebase_circuit._record_success()
+        logger.info("local_task_created", task_id=doc_ref.id, skill=skill)
+        return doc_ref.id
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("create_local_task_error", error=str(e)[:100])
+        raise
+
+
+async def get_pending_local_tasks(limit: int = 10) -> List[Dict]:
+    """Get pending local tasks for processing.
+
+    Args:
+        limit: Maximum number of tasks to return
+
+    Returns:
+        List of task dicts with 'id' field
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        logger.warning("firebase_circuit_open", operation="get_pending_local_tasks")
+        return []
+
+    try:
+        db = get_db()
+        query = (
+            db.collection("task_queue")
+            .where(filter=FieldFilter("status", "==", "pending"))
+            .order_by("created_at")
+            .limit(limit)
+        )
+        results = [{"id": doc.id, **doc.to_dict()} for doc in query.stream()]
+        firebase_circuit._record_success()
+        return results
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("get_pending_local_tasks_error", error=str(e)[:100])
+        return []
+
+
+async def claim_local_task(task_id: str) -> bool:
+    """Claim a task for processing (atomic).
+
+    Uses transaction to ensure only one executor claims the task.
+
+    Args:
+        task_id: Firebase document ID
+
+    Returns:
+        True if claimed successfully, False otherwise
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        logger.warning("firebase_circuit_open", operation="claim_local_task")
+        return False
+
+    try:
+        db = get_db()
+        doc_ref = db.collection("task_queue").document(task_id)
+
+        @firestore.transactional
+        def claim_in_transaction(transaction, doc_ref):
+            snapshot = doc_ref.get(transaction=transaction)
+            if not snapshot.exists:
+                return False
+            if snapshot.get("status") != "pending":
+                return False
+            transaction.update(doc_ref, {
+                "status": "processing",
+                "started_at": firestore.SERVER_TIMESTAMP,
+                "updated_at": firestore.SERVER_TIMESTAMP
+            })
+            return True
+
+        transaction = db.transaction()
+        result = claim_in_transaction(transaction, doc_ref)
+        firebase_circuit._record_success()
+
+        if result:
+            logger.info("local_task_claimed", task_id=task_id)
+        return result
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("claim_local_task_error", task_id=task_id, error=str(e)[:100])
+        return False
+
+
+async def complete_local_task(
+    task_id: str,
+    result: str,
+    success: bool = True,
+    error: str = None
+) -> None:
+    """Mark task as completed or failed.
+
+    Args:
+        task_id: Firebase document ID
+        result: Execution result (if success)
+        success: True for completed, False for failed
+        error: Error message (if failed)
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        logger.warning("firebase_circuit_open", operation="complete_local_task")
+        raise CircuitOpenError("firebase", firebase_circuit._cooldown_remaining())
+
+    try:
+        db = get_db()
+        update_data = {
+            "status": "completed" if success else "failed",
+            "completed_at": firestore.SERVER_TIMESTAMP,
+            "updated_at": firestore.SERVER_TIMESTAMP
+        }
+
+        if success:
+            update_data["result"] = result
+        else:
+            update_data["error"] = error
+
+        db.collection("task_queue").document(task_id).update(update_data)
+        firebase_circuit._record_success()
+
+        logger.info(
+            "local_task_completed" if success else "local_task_failed",
+            task_id=task_id
+        )
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("complete_local_task_error", task_id=task_id, error=str(e)[:100])
+        raise
+
+
+async def increment_retry_count(task_id: str) -> int:
+    """Increment retry count and reset to pending for retry.
+
+    Args:
+        task_id: Firebase document ID
+
+    Returns:
+        New retry count
+    """
+    db = get_db()
+    doc_ref = db.collection("task_queue").document(task_id)
+    doc = doc_ref.get()
+
+    if not doc.exists:
+        return -1
+
+    current_count = doc.to_dict().get("retry_count", 0)
+    new_count = current_count + 1
+
+    if new_count <= 3:  # Max 3 retries
+        doc_ref.update({
+            "retry_count": new_count,
+            "status": "pending",
+            "updated_at": firestore.SERVER_TIMESTAMP
+        })
+        logger.info("local_task_retry", task_id=task_id, retry_count=new_count)
+    else:
+        doc_ref.update({
+            "status": "failed",
+            "error": "Max retries exceeded",
+            "updated_at": firestore.SERVER_TIMESTAMP
+        })
+        logger.warning("local_task_max_retries", task_id=task_id)
+
+    return new_count
+
+
+async def get_task_result(task_id: str) -> Optional[Dict]:
+    """Get task result by ID.
+
+    Args:
+        task_id: Firebase document ID
+
+    Returns:
+        Task dict with 'id' field, or None if not found
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        logger.warning("firebase_circuit_open", operation="get_task_result")
+        return None
+
+    try:
+        db = get_db()
+        doc = db.collection("task_queue").document(task_id).get()
+        firebase_circuit._record_success()
+
+        if doc.exists:
+            return {"id": doc.id, **doc.to_dict()}
+        return None
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("get_task_result_error", task_id=task_id, error=str(e)[:100])
+        return None
+
+
+async def cleanup_old_tasks(days: int = 7) -> int:
+    """Delete tasks older than N days.
+
+    Args:
+        days: Age threshold in days (default 7)
+
+    Returns:
+        Number of tasks deleted
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        logger.warning("firebase_circuit_open", operation="cleanup_old_tasks")
+        return 0
+
+    try:
+        db = get_db()
+        cutoff = datetime.utcnow() - timedelta(days=days)
+
+        query = db.collection("task_queue").where(
+            filter=FieldFilter("created_at", "<", cutoff)
+        )
+
+        count = 0
+        for doc in query.stream():
+            doc.reference.delete()
+            count += 1
+
+        firebase_circuit._record_success()
+        logger.info("old_tasks_cleaned", count=count, days=days)
+        return count
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("cleanup_old_tasks_error", error=str(e)[:100])
+        return 0
+
+
+# ==================== Reminders ====================
+
+async def create_reminder(
+    user_id: int,
+    chat_id: int,
+    message: str,
+    due_at: datetime
+) -> str:
+    """Create a reminder. Returns reminder ID.
+
+    Args:
+        user_id: Telegram user ID
+        chat_id: Chat ID to send reminder to
+        message: Reminder message
+        due_at: When to send the reminder (UTC)
+
+    Returns:
+        Reminder ID
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        logger.warning("firebase_circuit_open", operation="create_reminder")
+        raise CircuitOpenError("firebase", firebase_circuit._cooldown_remaining())
+
+    try:
+        db = get_db()
+        doc_ref = db.collection("reminders").document()
+        doc_ref.set({
+            "user_id": user_id,
+            "chat_id": chat_id,
+            "message": message,
+            "due_at": due_at,
+            "sent": False,
+            "created_at": firestore.SERVER_TIMESTAMP
+        })
+        firebase_circuit._record_success()
+        logger.info("reminder_created", id=doc_ref.id, due_at=due_at.isoformat())
+        return doc_ref.id
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("create_reminder_error", error=str(e)[:100])
+        raise
+
+
+async def get_due_reminders(limit: int = 50) -> List[Dict]:
+    """Get reminders that are due and not sent.
+
+    Args:
+        limit: Maximum reminders to return
+
+    Returns:
+        List of reminder dicts with 'id' field
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        logger.warning("firebase_circuit_open", operation="get_due_reminders")
+        return []
+
+    try:
+        from datetime import timezone
+        db = get_db()
+        now = datetime.now(timezone.utc)
+
+        query = (
+            db.collection("reminders")
+            .where(filter=FieldFilter("sent", "==", False))
+            .where(filter=FieldFilter("due_at", "<=", now))
+            .limit(limit)
+        )
+
+        results = [{"id": doc.id, **doc.to_dict()} for doc in query.stream()]
+        firebase_circuit._record_success()
+        return results
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("get_due_reminders_error", error=str(e)[:100])
+        return []
+
+
+async def mark_reminder_sent(reminder_id: str) -> None:
+    """Mark reminder as sent.
+
+    Args:
+        reminder_id: Firebase document ID
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        logger.warning("firebase_circuit_open", operation="mark_reminder_sent")
+        return
+
+    try:
+        db = get_db()
+        db.collection("reminders").document(reminder_id).update({
+            "sent": True,
+            "sent_at": firestore.SERVER_TIMESTAMP
+        })
+        firebase_circuit._record_success()
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("mark_reminder_sent_error", error=str(e)[:100])
+
+
+async def get_user_reminders(user_id: int, limit: int = 10) -> List[Dict]:
+    """Get pending reminders for a user.
+
+    Args:
+        user_id: Telegram user ID
+        limit: Maximum reminders to return
+
+    Returns:
+        List of reminder dicts with 'id' field
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        logger.warning("firebase_circuit_open", operation="get_user_reminders")
+        return []
+
+    try:
+        db = get_db()
+        query = (
+            db.collection("reminders")
+            .where(filter=FieldFilter("user_id", "==", user_id))
+            .where(filter=FieldFilter("sent", "==", False))
+            .order_by("due_at")
+            .limit(limit)
+        )
+
+        results = [{"id": doc.id, **doc.to_dict()} for doc in query.stream()]
+        firebase_circuit._record_success()
+        return results
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("get_user_reminders_error", error=str(e)[:100])
+        return []
+
+
+async def delete_reminder(reminder_id: str, user_id: int) -> bool:
+    """Delete a reminder (admin only).
+
+    Args:
+        reminder_id: Firebase document ID
+        user_id: User ID (for verification)
+
+    Returns:
+        True if deleted, False otherwise
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        logger.warning("firebase_circuit_open", operation="delete_reminder")
+        return False
+
+    try:
+        db = get_db()
+        doc_ref = db.collection("reminders").document(reminder_id)
+        doc = doc_ref.get()
+
+        if not doc.exists:
+            return False
+
+        data = doc.to_dict()
+        if data.get("user_id") != user_id:
+            return False
+
+        doc_ref.delete()
+        firebase_circuit._record_success()
+        logger.info("reminder_deleted", id=reminder_id)
+        return True
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("delete_reminder_error", error=str(e)[:100])
+        return False
 
