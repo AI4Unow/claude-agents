@@ -1,8 +1,8 @@
 ---
 name: mobile-development
 description: Build modern mobile applications with React Native, Flutter, Swift/SwiftUI, and Kotlin/Jetpack Compose. Covers mobile-first design principles, performance optimization (battery, memory, network), offline-first architecture, platform-specific guidelines (iOS HIG, Material Design), testing strategies, security best practices, accessibility, app store deployment, and mobile development mindset. Use when building mobile apps, implementing mobile UX patterns, optimizing for mobile constraints, or making native vs cross-platform decisions.
-source: SKILL.md
-converted: 2025-12-27
+license: MIT
+version: 1.0.0
 ---
 
 # Mobile Development Skill
@@ -210,13 +210,3 @@ See: `references/mobile-mindset.md` for thinking patterns and decision framework
 - Pub.dev (Flutter packages): https://pub.dev/
 - Awesome React Native: https://github.com/jondot/awesome-react-native
 - Awesome Flutter: https://github.com/Solido/awesome-flutter
-
-## Memory
-
-<!-- Per-skill memory: patterns, preferences, learnings -->
-<!-- Updated automatically after each task -->
-
-## Error History
-
-<!-- Past errors and fixes -->
-<!-- Format: YYYY-MM-DD: error description - fix applied -->

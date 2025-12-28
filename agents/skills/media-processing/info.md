@@ -1,9 +1,7 @@
 ---
 name: media-processing
 description: Process multimedia files with FFmpeg (video/audio encoding, conversion, streaming, filtering, hardware acceleration), ImageMagick (image manipulation, format conversion, batch processing, effects, composition), and RMBG (AI-powered background removal). Use when converting media formats, encoding videos with specific codecs (H.264, H.265, VP9), resizing/cropping images, removing backgrounds from images, extracting audio from video, applying filters and effects, optimizing file sizes, creating streaming manifests (HLS/DASH), generating thumbnails, batch processing images, creating composite images, or implementing media processing pipelines. Supports 100+ formats, hardware acceleration (NVENC, QSV), and complex filtergraphs.
-deployment: local
-source: SKILL.md
-converted: 2025-12-27
+license: MIT
 ---
 
 # Media Processing Skill
@@ -91,13 +89,3 @@ Detailed guides in `references/`:
 - `common-workflows.md` - Video optimization, responsive images, GIF creation
 - `troubleshooting.md` - Error fixes, performance tips
 - `format-compatibility.md` - Format support, codec recommendations
-
-## Memory
-
-<!-- Per-skill memory: patterns, preferences, learnings -->
-<!-- Updated automatically after each task -->
-
-## Error History
-
-<!-- Past errors and fixes -->
-<!-- Format: YYYY-MM-DD: error description - fix applied -->

@@ -1,8 +1,8 @@
 ---
 name: ai-artist
 description: Write and optimize prompts for AI-generated outcomes across text and image models. Use when crafting prompts for LLMs (Claude, GPT, Gemini), image generators (Midjourney, DALL-E, Stable Diffusion, Imagen, Flux), or video generators (Veo, Runway). Covers prompt structure, style keywords, negative prompts, chain-of-thought, few-shot examples, iterative refinement, and domain-specific patterns for marketing, code, and creative writing.
-source: SKILL.md
-converted: 2025-12-27
+version: 1.0.0
+license: MIT
 ---
 
 # AI Artist - Prompt Engineering
@@ -73,13 +73,3 @@ Load for detailed guidance:
 - Missing context for domain tasks
 - Over-prompting with redundant details
 - Ignoring model-specific strengths/limits
-
-## Memory
-
-<!-- Per-skill memory: patterns, preferences, learnings -->
-<!-- Updated automatically after each task -->
-
-## Error History
-
-<!-- Past errors and fixes -->
-<!-- Format: YYYY-MM-DD: error description - fix applied -->

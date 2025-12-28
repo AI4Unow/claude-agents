@@ -1,9 +1,6 @@
 ---
 name: image-enhancer
 description: Improves the quality of images, especially screenshots, by enhancing resolution, sharpness, and clarity. Perfect for preparing images for presentations, documentation, or social media posts.
-deployment: local
-source: SKILL.md
-converted: 2025-12-27
 ---
 
 # Image Enhancer
@@ -100,12 +97,3 @@ Original preserved as: screenshot-2024-original.png
 - **Presentations**: Upscale images for large screens
 - **Print Materials**: Increase resolution for physical media
 
-## Memory
-
-<!-- Per-skill memory: patterns, preferences, learnings -->
-<!-- Updated automatically after each task -->
-
-## Error History
-
-<!-- Past errors and fixes -->
-<!-- Format: YYYY-MM-DD: error description - fix applied -->

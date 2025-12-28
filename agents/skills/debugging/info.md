@@ -1,8 +1,8 @@
 ---
 name: Debugging
 description: Systematic debugging framework ensuring root cause investigation before fixes. Includes four-phase debugging process, backward call stack tracing, multi-layer validation, and verification protocols. Use when encountering bugs, test failures, unexpected behavior, performance issues, or before claiming work complete. Prevents random fixes, masks over symptoms, and false completion claims.
-source: SKILL.md
-converted: 2025-12-27
+version: 3.0.0
+languages: all
 ---
 
 # Debugging
@@ -82,13 +82,3 @@ Stop and follow process if thinking:
 - "Tests pass, we're done"
 
 **All mean:** Return to systematic process.
-
-## Memory
-
-<!-- Per-skill memory: patterns, preferences, learnings -->
-<!-- Updated automatically after each task -->
-
-## Error History
-
-<!-- Past errors and fixes -->
-<!-- Format: YYYY-MM-DD: error description - fix applied -->

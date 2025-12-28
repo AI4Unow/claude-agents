@@ -1,8 +1,6 @@
 ---
 name: code-review
 description: Use when receiving code review feedback (especially if unclear or technically questionable), when completing tasks or major features requiring review before proceeding, or before making any completion/success claims. Covers three practices - receiving feedback with technical rigor over performative agreement, requesting reviews via code-reviewer subagent, and verification gates requiring evidence before any status claims. Essential for subagent-driven development, pull requests, and preventing false completion claims.
-source: SKILL.md
-converted: 2025-12-27
 ---
 
 # Code Review
@@ -143,13 +141,3 @@ Using "should"/"probably"/"seems to", expressing satisfaction before verificatio
 3. Evidence before claims - Verification gates always
 
 Verify. Question. Then implement. Evidence. Then claim.
-
-## Memory
-
-<!-- Per-skill memory: patterns, preferences, learnings -->
-<!-- Updated automatically after each task -->
-
-## Error History
-
-<!-- Past errors and fixes -->
-<!-- Format: YYYY-MM-DD: error description - fix applied -->

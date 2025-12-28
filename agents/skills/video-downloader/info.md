@@ -1,10 +1,6 @@
 ---
 name: video-downloader
 description: Downloads videos from YouTube and other platforms for offline viewing, editing, or archival. Handles various formats and quality options.
-deployment: local
-requires_browser: false
-source: SKILL.md
-converted: 2025-12-27
 ---
 
 # Video Downloader
@@ -108,12 +104,3 @@ Saved to: ~/Downloads/
 - **Backup**: Save important videos before they're removed
 - **Offline Viewing**: Watch videos without internet access
 
-## Memory
-
-<!-- Per-skill memory: patterns, preferences, learnings -->
-<!-- Updated automatically after each task -->
-
-## Error History
-
-<!-- Past errors and fixes -->
-<!-- Format: YYYY-MM-DD: error description - fix applied -->

@@ -1,8 +1,8 @@
 ---
 name: backend-development
 description: Build robust backend systems with modern technologies (Node.js, Python, Go, Rust), frameworks (NestJS, FastAPI, Django), databases (PostgreSQL, MongoDB, Redis), APIs (REST, GraphQL, gRPC), authentication (OAuth 2.1, JWT), testing strategies, security best practices (OWASP Top 10), performance optimization, scalability patterns (microservices, caching, sharding), DevOps practices (Docker, Kubernetes, CI/CD), and monitoring. Use when designing APIs, implementing authentication, optimizing database queries, setting up CI/CD pipelines, handling security vulnerabilities, building microservices, or developing production-ready backend systems.
-source: SKILL.md
-converted: 2025-12-27
+license: MIT
+version: 1.0.0
 ---
 
 # Backend Development Skill
@@ -93,13 +93,3 @@ See: `references/backend-technologies.md` for detailed comparisons
 - OWASP Top 10: https://owasp.org/www-project-top-ten/
 - OAuth 2.1: https://oauth.net/2.1/
 - OpenTelemetry: https://opentelemetry.io/
-
-## Memory
-
-<!-- Per-skill memory: patterns, preferences, learnings -->
-<!-- Updated automatically after each task -->
-
-## Error History
-
-<!-- Past errors and fixes -->
-<!-- Format: YYYY-MM-DD: error description - fix applied -->

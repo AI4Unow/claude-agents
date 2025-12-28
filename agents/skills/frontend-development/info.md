@@ -1,8 +1,6 @@
 ---
 name: frontend-dev-guidelines
 description: Frontend development guidelines for React/TypeScript applications. Modern patterns including Suspense, lazy loading, useSuspenseQuery, file organization with features directory, MUI v7 styling, TanStack Router, performance optimization, and TypeScript best practices. Use when creating components, pages, features, fetching data, styling, routing, or working with frontend code.
-source: SKILL.md
-converted: 2025-12-27
 ---
 
 # Frontend Development Guidelines
@@ -399,13 +397,3 @@ For complete examples, see [resources/complete-examples.md](resources/complete-e
 ---
 
 **Skill Status**: Modular structure with progressive loading for optimal context management
-
-## Memory
-
-<!-- Per-skill memory: patterns, preferences, learnings -->
-<!-- Updated automatically after each task -->
-
-## Error History
-
-<!-- Past errors and fixes -->
-<!-- Format: YYYY-MM-DD: error description - fix applied -->

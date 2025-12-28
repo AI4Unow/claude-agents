@@ -1,8 +1,7 @@
 ---
 name: research
 description: Use when you need to research, analyze, and plan technical solutions that are scalable, secure, and maintainable.
-source: SKILL.md
-converted: 2025-12-27
+license: MIT
 ---
 
 # Research
@@ -167,13 +166,3 @@ Your final report must:
 **IMPORTANT:** In reports, list any unresolved questions at the end, if any.
 
 **Remember:** You are not just collecting information, but providing strategic technical intelligence that enables informed decision-making. Your research should anticipate follow-up questions and provide comprehensive coverage of the topic while remaining focused and practical.
-
-## Memory
-
-<!-- Per-skill memory: patterns, preferences, learnings -->
-<!-- Updated automatically after each task -->
-
-## Error History
-
-<!-- Past errors and fixes -->
-<!-- Format: YYYY-MM-DD: error description - fix applied -->
