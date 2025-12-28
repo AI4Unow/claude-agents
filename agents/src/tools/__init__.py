@@ -1,6 +1,6 @@
 """Tools package - Tool registry and tool implementations."""
 from src.tools.registry import ToolRegistry, get_registry
-from src.tools.base import BaseTool
+from src.tools.base import BaseTool, ToolResult
 from src.tools.web_search import WebSearchTool
 from src.tools.datetime_tool import DateTimeTool
 from src.tools.code_exec import CodeExecutionTool
@@ -19,6 +19,6 @@ def init_default_tools():
 
 
 __all__ = [
-    "ToolRegistry", "get_registry", "BaseTool", "init_default_tools",
+    "ToolRegistry", "get_registry", "BaseTool", "ToolResult", "init_default_tools",
     "WebSearchTool", "DateTimeTool", "CodeExecutionTool", "WebReaderTool", "MemorySearchTool"
 ]

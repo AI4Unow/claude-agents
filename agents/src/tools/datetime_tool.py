@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Any, Dict
 from zoneinfo import ZoneInfo
-from src.tools.base import BaseTool
+from src.tools.base import BaseTool, ToolResult
 
 
 class DateTimeTool(BaseTool):
@@ -32,16 +32,17 @@ class DateTimeTool(BaseTool):
             "required": []
         }
 
-    async def execute(self, params: Dict[str, Any]) -> str:
+    async def execute(self, params: Dict[str, Any]) -> ToolResult:
         tz_name = params.get("timezone", "UTC")
         try:
             tz = ZoneInfo(tz_name)
             now = datetime.now(tz)
-            return (
+            data = (
                 f"Current time in {tz_name}:\n"
                 f"Date: {now.strftime('%Y-%m-%d')}\n"
                 f"Time: {now.strftime('%H:%M:%S')}\n"
                 f"Day: {now.strftime('%A')}"
             )
+            return ToolResult.ok(data)
         except Exception:
-            return f"Error: Invalid timezone '{tz_name}'. Use IANA format like 'Asia/Ho_Chi_Minh'"
+            return ToolResult.fail(f"Invalid timezone '{tz_name}'. Use IANA format like 'Asia/Ho_Chi_Minh'")

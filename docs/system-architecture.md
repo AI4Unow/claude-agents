@@ -9,23 +9,26 @@ LOCAL DEVELOPMENT                         MODAL CLOUD
 ┌─────────────────┐                      ┌─────────────────────────────────────┐
 │ Your Computer   │                      │            MODAL SERVER             │
 │                 │                      │                                     │
-│ skills/         │    modal deploy      │  ┌─────────────────────────────────┐│
-│ ├── zalo-chat/  │ ──────────────────► │  │  zalo_chat.py                   ││
-│ │   ├── info.md │                      │  │  github_agent.py                ││
-│ │   └── agent.py│                      │  │  data_agent.py                  ││
-│ ├── github/     │                      │  │  content_agent.py               ││
-│ │   ├── info.md │                      │  │                                 ││
-│ │   └── agent.py│                      │  │  Runs on cron schedule          ││
-│ └── ...         │                      │  │  Up to 60 min per execution     ││
+│ agents/         │    modal deploy      │  ┌─────────────────────────────────┐│
+│ ├── main.py     │ ──────────────────► │  │  FastAPI Web App                ││
+│ ├── src/        │                      │  │  ├── /webhook/telegram          ││
+│ │   ├── agents/ │                      │  │  ├── /webhook/github            ││
+│ │   ├── services│                      │  │  ├── /api/skill                 ││
+│ │   ├── tools/  │                      │  │  ├── /api/skills                ││
+│ │   └── core/   │                      │  │  └── /api/content               ││
+│ └── skills/     │                      │  │                                 ││
+│                 │                      │  │  Cron Jobs:                     ││
+│                 │                      │  │  ├── github_monitor (hourly)    ││
+│                 │                      │  │  └── daily_summary (1 AM UTC)   ││
 │                 │                      │  └─────────────────────────────────┘│
-│ .env (secrets)  │    modal secrets     │                                     │
+│                 │    modal secrets     │                                     │
 │                 │ ──────────────────► │  ┌─────────────────────────────────┐│
 └─────────────────┘                      │  │  MODAL VOLUME (/skills/)        ││
                                          │  │                                 ││
-                                         │  │  zalo-chat/info.md  (mutable)   ││
-                                         │  │  github/info.md     (mutable)   ││
-                                         │  │  data/info.md       (mutable)   ││
-                                         │  │  content/info.md    (mutable)   ││
+                                         │  │  telegram-chat/info.md          ││
+                                         │  │  github/info.md                 ││
+                                         │  │  planning/info.md               ││
+                                         │  │  ... (25+ skills)               ││
                                          │  │                                 ││
                                          │  │  Agents READ and WRITE here     ││
                                          │  │  Self-improvement persists      ││
@@ -35,8 +38,8 @@ LOCAL DEVELOPMENT                         MODAL CLOUD
                     ┌─────────────────────────────────────┼─────────────────┐
                     ▼                                     ▼                 ▼
           ┌─────────────────┐                   ┌─────────────┐   ┌─────────────┐
-          │  VERCEL EDGE    │                   │   FIREBASE  │   │QDRANT CLOUD │
-          │  (Webhooks)     │                   │  (State)    │   │  (Memory)   │
+          │  TELEGRAM API   │                   │   FIREBASE  │   │QDRANT CLOUD │
+          │  (Chat)         │                   │  (State)    │   │  (Memory)   │
           └─────────────────┘                   └─────────────┘   └─────────────┘
 ```
 
@@ -46,109 +49,397 @@ LOCAL DEVELOPMENT                         MODAL CLOUD
 
 | Component | Type | Config | Purpose |
 |-----------|------|--------|---------|
-| Zalo Chat Agent | Web Endpoint | `min_containers=1` | Primary user interface |
+| Telegram Chat Agent | Web Endpoint | `min_containers=1` | Primary user interface |
 | GitHub Agent | Cron + Webhook | Hourly | Repo automation |
-| Data Agent | Scheduled | Daily/hourly | Data processing |
+| Data Agent | Scheduled | Daily | Data processing |
 | Content Agent | Function | On-demand | Content generation |
 | Skills Volume | Volume | 10GB | Mutable info.md storage |
 
 ### External Services
 
-| Service | Purpose | Region |
-|---------|---------|--------|
-| Firebase Firestore | State, task queue, tokens | Default |
-| Qdrant Cloud | Vector memory | Asia (Singapore/Tokyo) |
-| Vercel Edge | Webhook relay | Global edge |
-| Anthropic API | Claude LLM | Default |
-| Vertex AI | Text embeddings | us-central1 |
+| Service | Purpose | Details |
+|---------|---------|---------|
+| Telegram Bot API | Chat interface | User messaging |
+| Firebase Firestore | State, task queue | Free tier |
+| Qdrant Cloud | Vector memory | Semantic search |
+| Anthropic API | Claude LLM | Via ai4u.now proxy |
+| Exa API | Web search | Primary search |
+| Tavily API | Web search | Fallback search |
+| GitHub API | Repo automation | Via PyGithub |
+
+## II Framework Architecture
+
+### Skill = Information + Implementation
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         II FRAMEWORK PATTERN                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  INFORMATION (.md)                    IMPLEMENTATION (.py)                   │
+│  ─────────────────                    ──────────────────                     │
+│  • Instructions for LLM               • Python execution code                │
+│  • Memory of past runs                • Tool functions                       │
+│  • Learned improvements               • LLM API calls                        │
+│  • Error history                      • External integrations                │
+│                                                                              │
+│  MUTABLE at runtime                   IMMUTABLE after deploy                 │
+│  → Modal Volume (/skills/)            → Modal Server (src/)                  │
+│                                                                              │
+│  Self-Improvement Flow:                                                      │
+│  1. Read info.md from Volume                                                 │
+│  2. Execute task with LLM + tools                                            │
+│  3. Evaluate results                                                         │
+│  4. Update info.md if needed                                                 │
+│  5. Commit changes to Volume                                                 │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Progressive Disclosure Pattern
+
+```
+Layer 1: DISCOVERY (Fast)
+────────────────────────
+SkillSummary {
+  name: "planning"
+  description: "Create implementation plans"
+  category: "development"
+}
+→ Loaded for all 25+ skills at startup
+→ Used for routing decisions
+
+Layer 2: ACTIVATION (On-demand)
+───────────────────────────────
+Skill {
+  name, description
+  body: full markdown content
+  memory: accumulated learnings
+  error_history: past issues
+}
+→ Loaded when skill is invoked
+→ Used as system prompt for LLM
+```
+
+## State Management Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         STATE MANAGER (src/core/state.py)                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  L1 CACHE (In-Memory)              L2 STORE (Firebase Firestore)            │
+│  ─────────────────────             ─────────────────────────────            │
+│  • TTL-based expiration            • Persistent storage                     │
+│  • Thread-safe (lock)              • Async via asyncio.to_thread()          │
+│  • Hot data access                 • Cold data fallback                     │
+│                                                                              │
+│  TTL Defaults:                                                               │
+│  ├── Sessions: 1 hour                                                        │
+│  ├── Conversations: 24 hours (last 20 messages)                              │
+│  └── Generic cache: 5 minutes                                                │
+│                                                                              │
+│  Cache Flow:                                                                 │
+│  ┌─────────┐    miss    ┌─────────┐    cache     ┌─────────┐                │
+│  │ Request │ ─────────► │ L1 Cache│ ───────────► │ L2 Store│                │
+│  └─────────┘            └─────────┘              └─────────┘                │
+│       ▲                      │                        │                      │
+│       │                      │ hit                    │ found                │
+│       └──────────────────────┴────────────────────────┘                      │
+│                                                                              │
+│  Thread Safety:                                                              │
+│  • _singleton_lock: Double-check locking for StateManager                   │
+│  • _cache_lock: Protects L1 cache dict operations                           │
+│  • Atomic session updates via Firebase merge                                │
+│                                                                              │
+│  Cache Warming (@enter hook):                                                │
+│  • Preload skill metadata from Firebase                                      │
+│  • Preload last 50 active user sessions                                      │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Resilience Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         CIRCUIT BREAKERS (src/core/resilience.py)           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Service        │ Circuit Name    │ Threshold │ Cooldown                    │
+│  ────────────── │ ─────────────── │ ───────── │ ────────                    │
+│  Exa Search     │ exa_api         │ 3 fails   │ 30s                         │
+│  Tavily Search  │ tavily_api      │ 3 fails   │ 30s                         │
+│  Firebase       │ firebase        │ 5 fails   │ 60s                         │
+│  Qdrant         │ qdrant          │ 5 fails   │ 60s                         │
+│  Claude API     │ claude_api      │ 3 fails   │ 60s                         │
+│  Telegram API   │ telegram_api    │ 5 fails   │ 30s                         │
+│                                                                              │
+│  States:                                                                     │
+│  ├── CLOSED: Normal operation, requests pass through                        │
+│  ├── OPEN: Service failing, reject immediately                              │
+│  └── HALF_OPEN: Testing if service recovered                                │
+│                                                                              │
+│  Endpoints:                                                                  │
+│  ├── GET /health - Includes circuit status                                  │
+│  ├── GET /api/circuits - Detailed circuit stats                             │
+│  └── POST /api/circuits/reset - Reset all circuits                          │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Execution Tracing
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         TRACING (src/core/trace.py)                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  TraceContext (async context manager)                                        │
+│  ├── trace_id: Unique execution ID                                          │
+│  ├── user_id: Telegram user ID                                              │
+│  ├── skill: Skill name for metadata                                         │
+│  ├── iterations: Agentic loop count                                         │
+│  └── tool_traces: List[ToolTrace]                                           │
+│                                                                              │
+│  ToolTrace (per tool call)                                                   │
+│  ├── name: Tool name                                                         │
+│  ├── input_params: Tool input                                                │
+│  ├── output: Tool result                                                     │
+│  ├── duration_ms: Execution time                                             │
+│  ├── is_error: Success/failure                                               │
+│  └── timestamp: Call time                                                    │
+│                                                                              │
+│  Storage: Firebase (execution_traces collection)                             │
+│  Retention: Configurable                                                     │
+│                                                                              │
+│  Endpoints:                                                                  │
+│  ├── GET /api/traces?user_id=X&status=Y&limit=N                             │
+│  └── GET /api/traces/{trace_id}                                              │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ## Self-Improvement Loop
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         AGENT EXECUTION CYCLE                                │
+│                    SELF-IMPROVEMENT (src/core/improvement.py)               │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  1. WAKE UP (Cron or webhook trigger)                                       │
-│     │                                                                        │
-│  2. READ info.md from Modal Volume                                          │
-│     │  - Current instructions                                               │
-│     │  - Memory of past runs                                                │
-│     │  - Learned improvements                                               │
-│     │                                                                        │
-│  3. EXECUTE task using agent.py + LLM API                                   │
-│     │                                                                        │
-│  4. EVALUATE results                                                        │
-│     │                                                                        │
-│     ├── Success → Append to memory section in info.md                       │
-│     │                                                                        │
-│     └── Error → SELF-IMPROVE                                                │
-│           │                                                                  │
-│           ├── LLM analyzes what went wrong                                  │
-│           ├── LLM rewrites info.md with fix                                 │
-│           ├── Commit changes to Modal Volume                                │
-│           └── Retry (recursive until success or timeout)                    │
-│                                                                              │
-│  5. COMPLETE - Sleep until next trigger                                     │
+│  Error Detection (agentic.py)                                                │
+│       │                                                                      │
+│       ▼                                                                      │
+│  ┌──────────────────────┐                                                    │
+│  │ ImprovementService   │                                                    │
+│  │ .analyze_error()     │                                                    │
+│  └──────────┬───────────┘                                                    │
+│             │                                                                │
+│             ├── Rate limit check (3/hour/skill)                             │
+│             │                                                                │
+│             ├── Deduplication check (24h window)                            │
+│             │                                                                │
+│             ▼                                                                │
+│  ┌──────────────────────┐                                                    │
+│  │ LLM Reflection       │ ← Analyze error + current skill                   │
+│  │ Generate proposal    │                                                    │
+│  └──────────┬───────────┘                                                    │
+│             │                                                                │
+│             ▼                                                                │
+│  ┌──────────────────────┐                                                    │
+│  │ Store in Firebase    │ ← skill_improvements collection                   │
+│  │ (status: pending)    │                                                    │
+│  └──────────┬───────────┘                                                    │
+│             │                                                                │
+│             ▼                                                                │
+│  ┌──────────────────────┐                                                    │
+│  │ Telegram Notification│ ← Admin ID from secrets                           │
+│  │ [Approve] [Reject]   │                                                    │
+│  └──────────┬───────────┘                                                    │
+│             │                                                                │
+│    ┌────────┴────────┐                                                       │
+│    ▼                 ▼                                                       │
+│  Approve          Reject                                                     │
+│    │                 │                                                       │
+│    ▼                 ▼                                                       │
+│  Update           Mark rejected                                              │
+│  info.md          in Firebase                                                │
+│  Commit Volume                                                               │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Data Flow
-
-### Message Flow (Zalo Chat)
+## Tool System Architecture
 
 ```
-User (Zalo) ──► Zalo Server ──► Modal Webhook
-                                     │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           TOOL SYSTEM                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ToolRegistry                                                                │
+│  ├── get_definitions() → List[dict]   # Anthropic-compatible schemas        │
+│  ├── execute(name, input) → str       # Run tool and return result          │
+│  └── register(tool)                   # Add new tool                         │
+│                                                                              │
+│  Built-in Tools:                                                             │
+│  ┌──────────────┬─────────────────────────────────────────────────────────┐ │
+│  │ web_search   │ Search web via Exa (primary) + Tavily (fallback)        │ │
+│  ├──────────────┼─────────────────────────────────────────────────────────┤ │
+│  │ get_datetime │ Current date/time with timezone support                 │ │
+│  ├──────────────┼─────────────────────────────────────────────────────────┤ │
+│  │ run_python   │ Execute Python code in sandboxed environment            │ │
+│  ├──────────────┼─────────────────────────────────────────────────────────┤ │
+│  │ read_webpage │ Fetch and parse URL content                             │ │
+│  ├──────────────┼─────────────────────────────────────────────────────────┤ │
+│  │ search_memory│ Semantic search in Qdrant vector store                  │ │
+│  └──────────────┴─────────────────────────────────────────────────────────┘ │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Agentic Loop Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         AGENTIC LOOP (max 5 iterations)                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  User Message                                                                │
+│       │                                                                      │
+│       ▼                                                                      │
+│  ┌──────────────────────┐                                                    │
+│  │ Build Messages       │ ← Context (last 5 messages)                        │
+│  │ + System Prompt      │ ← From info.md                                     │
+│  │ + Tools              │ ← From registry                                    │
+│  └──────────┬───────────┘                                                    │
+│             │                                                                │
+│             ▼                                                                │
+│  ┌──────────────────────┐                                                    │
+│  │ Call Claude API      │                                                    │
+│  │ with tools           │                                                    │
+│  └──────────┬───────────┘                                                    │
+│             │                                                                │
+│             ├─── stop_reason: "end_turn" ──► Return text response            │
+│             │                                                                │
+│             └─── stop_reason: "tool_use" ──┐                                 │
+│                                            │                                 │
+│                  ┌─────────────────────────▼─────┐                           │
+│                  │ Execute tool(s)               │                           │
+│                  │ Append results to messages    │                           │
+│                  └─────────────────────────┬─────┘                           │
+│                                            │                                 │
+│                                            └──► Loop (next iteration)        │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Skill Routing Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         SKILL ROUTING                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Request: "Create a plan for authentication"                                 │
+│       │                                                                      │
+│       ▼                                                                      │
+│  ┌──────────────────────┐                                                    │
+│  │ SkillRouter.route()  │                                                    │
+│  └──────────┬───────────┘                                                    │
+│             │                                                                │
+│             ├─── Try: Semantic Search (Qdrant)                               │
+│             │         Embed request → Search skills collection               │
+│             │         Return: [{skill: "planning", score: 0.92}]             │
+│             │                                                                │
+│             └─── Fallback: Keyword Match                                     │
+│                   If Qdrant fails, match keywords                            │
+│                   in skill names/descriptions                                │
+│                                                                              │
+│       ▼                                                                      │
+│  ┌──────────────────────┐                                                    │
+│  │ Load Full Skill      │ ← Progressive disclosure Layer 2                   │
+│  │ (registry.get_full)  │                                                    │
+│  └──────────┬───────────┘                                                    │
+│             │                                                                │
+│             ▼                                                                │
+│  ┌──────────────────────┐                                                    │
+│  │ Execute with LLM     │ ← Skill body as system prompt                      │
+│  └──────────────────────┘                                                    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Skill Execution Modes
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         EXECUTION MODES                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  SIMPLE                    ROUTED                     ORCHESTRATED           │
+│  ──────                    ──────                     ────────────           │
+│  Direct skill execution    Auto-select best skill    Multi-skill complex     │
+│                                                       task coordination      │
+│  POST /api/skill           POST /api/skill           POST /api/skill         │
+│  {                         {                         {                       │
+│    "skill": "planning",      "task": "...",            "task": "...",        │
+│    "task": "...",            "mode": "routed"          "mode": "orchestrated"│
+│    "mode": "simple"        }                         }                       │
+│  }                                                                           │
+│                                                                              │
+│  CHAINED                   EVALUATED                                         │
+│  ───────                   ─────────                                         │
+│  Sequential skill          Execute with quality                              │
+│  pipeline                  assessment                                        │
+│                                                                              │
+│  POST /api/skill           POST /api/skill                                   │
+│  {                         {                                                 │
+│    "skills": ["research",    "skill": "planning",                            │
+│               "planning"],   "task": "...",                                  │
+│    "task": "...",            "mode": "evaluated"                             │
+│    "mode": "chained"       }                                                 │
+│  }                                                                           │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Message Flow (Telegram Chat)
+
+```
+User (Telegram) ──► Telegram Server ──► Modal Webhook
+                                             │
+                                             ▼
+                                      ┌─────────────────┐
+                                      │ Extract Message │
+                                      └────────┬────────┘
+                                               │
+                         ┌─────────────────────┼─────────────────────┐
+                         │                     │                     │
+                         ▼                     ▼                     ▼
+                   ┌──────────┐         ┌──────────┐          ┌──────────┐
+                   │ Command? │         │ Regular  │          │ Error    │
+                   │ /help    │         │ Message  │          │ Handler  │
+                   └────┬─────┘         └────┬─────┘          └──────────┘
+                        │                    │
+                        ▼                    ▼
+                   ┌──────────┐         ┌──────────────────┐
+                   │ Handle   │         │ Agentic Loop     │
+                   │ Command  │         │ with Tools       │
+                   └────┬─────┘         └────────┬─────────┘
+                        │                        │
+                        └────────────┬───────────┘
                                      ▼
                               ┌─────────────────┐
-                              │ Verify Signature │
-                              └────────┬────────┘
-                                       │
-                              ┌────────▼────────┐
-                              │ Get User Context │◄── Qdrant
-                              └────────┬────────┘
-                                       │
-                              ┌────────▼────────┐
-                              │ Process w/ Claude│◄── Anthropic
-                              └────────┬────────┘
-                                       │
-                         ┌─────────────┼─────────────┐
-                         ▼             ▼             ▼
-                   ┌──────────┐ ┌──────────┐ ┌──────────┐
-                   │ Dispatch │ │ Store    │ │ Respond  │
-                   │ Task     │ │ Memory   │ │ to User  │
-                   └──────────┘ └──────────┘ └──────────┘
-                        │             │             │
-                   Firebase       Qdrant         Zalo API
-```
-
-### Inter-Agent Communication
-
-Pattern: Task Queue via Firebase
-
-```python
-# Agent A dispatches task
-db.collection("tasks").add({
-    "type": "content",
-    "status": "pending",
-    "payload": {"topic": "weekly report"}
-})
-
-# Agent B picks up task
-tasks = db.collection("tasks")
-    .where("type", "==", "content")
-    .where("status", "==", "pending")
-    .limit(1).get()
+                              │ Send Response   │──► Telegram API
+                              └─────────────────┘
 ```
 
 ## Firebase Schema
 
-```
+```javascript
 firestore/
 ├── users/{userId}
-│   ├── zaloId: string
+│   ├── telegramId: string
 │   ├── preferences: map
 │   └── createdAt: timestamp
 ├── agents/{agentId}
@@ -160,18 +451,22 @@ firestore/
 │   ├── status: "pending" | "processing" | "done"
 │   ├── payload: map
 │   └── result: map
-└── tokens/{service}
-    ├── accessToken: string
-    └── expiresAt: timestamp
+└── logs/{logId}
+    ├── skill_id: string
+    ├── action: string
+    ├── result: string
+    ├── duration_ms: number
+    └── timestamp: timestamp
 ```
 
 ## Qdrant Collections
 
 | Collection | Vector Dim | Purpose |
 |------------|------------|---------|
-| `conversations` | 768 | Chat history embeddings |
-| `knowledge` | 768 | Domain knowledge base |
-| `tasks` | 768 | Task context for retrieval |
+| `skills` | 768/1536 | Skill embeddings for routing |
+| `knowledge` | 768/1536 | Cross-skill insights |
+| `conversations` | 768/1536 | Chat history |
+| `errors` | 768/1536 | Error pattern matching |
 
 ## Cost Estimate
 
@@ -181,5 +476,4 @@ firestore/
 | Qdrant Cloud | ~$25 |
 | LLM API calls | ~$10-20 |
 | Firebase | $0 (free tier) |
-| Vercel Edge | $0 (free tier) |
 | **Total** | **~$40-60** |

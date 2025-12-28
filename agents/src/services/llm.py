@@ -1,9 +1,11 @@
 """LLM client wrapper using Anthropic-compatible API (ai4u.now)."""
 import os
 from typing import List, Dict, Optional
-import structlog
 
-logger = structlog.get_logger()
+from src.utils.logging import get_logger
+from src.core.resilience import claude_circuit, CircuitOpenError, CircuitState
+
+logger = get_logger()
 
 
 class LLMClient:
@@ -34,6 +36,7 @@ class LLMClient:
         max_tokens: int = 2048,
         temperature: float = 0.7,
         tools: Optional[List[dict]] = None,
+        timeout: float = 60.0,
     ):
         """Send chat completion request.
 
@@ -43,26 +46,44 @@ class LLMClient:
             max_tokens: Max response tokens
             temperature: Sampling temperature
             tools: Optional list of tool definitions for tool_use
+            timeout: Request timeout in seconds
 
         Returns:
             Full Message object if tools provided, else text string
+
+        Raises:
+            CircuitOpenError: If Claude API circuit is open
         """
+        # Check circuit state before calling
+        if claude_circuit.state == CircuitState.OPEN:
+            cooldown = claude_circuit._cooldown_remaining()
+            logger.warning("claude_circuit_open", cooldown_remaining=cooldown)
+            raise CircuitOpenError("claude_api", cooldown)
+
         kwargs = {
             "model": self.model,
             "max_tokens": max_tokens,
             "system": system or "You are a helpful assistant.",
             "messages": messages,
+            "timeout": timeout,
         }
         if tools:
             kwargs["tools"] = tools
 
-        response = self.client.messages.create(**kwargs)
-        logger.info("llm_success", model=self.model)
+        try:
+            response = self.client.messages.create(**kwargs)
+            claude_circuit._record_success()
+            logger.info("llm_success", model=self.model)
 
-        # Return full response if tools (for tool_use inspection), else just text
-        if tools:
-            return response
-        return response.content[0].text
+            # Return full response if tools (for tool_use inspection), else just text
+            if tools:
+                return response
+            return response.content[0].text
+
+        except Exception as e:
+            claude_circuit._record_failure(e)
+            logger.error("llm_error", error=str(e)[:100])
+            raise
 
 
 # Global client instance

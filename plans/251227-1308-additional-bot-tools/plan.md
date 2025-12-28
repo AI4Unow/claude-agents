@@ -1,7 +1,8 @@
 ---
 title: "Additional Bot Tools"
 description: "Add code execution, memory search, web reader, and datetime tools"
-status: pending
+status: completed
+completed: 2025-12-27
 priority: P1
 effort: 4h
 branch: main

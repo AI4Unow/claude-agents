@@ -6,11 +6,11 @@ and repository monitoring. Requires GITHUB_TOKEN in Modal secrets.
 from typing import Dict, List, Optional
 import os
 from datetime import datetime, timedelta
-import structlog
 
+from src.utils.logging import get_logger
 from src.agents.base import BaseAgent
 
-logger = structlog.get_logger()
+logger = get_logger()
 
 
 def is_configured() -> bool:

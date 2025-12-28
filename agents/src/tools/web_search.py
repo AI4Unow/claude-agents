@@ -1,15 +1,44 @@
-"""Web search tool using Exa (primary) with Tavily fallback."""
+"""Web search tool using Exa (primary) with Tavily fallback.
+
+Includes circuit breakers for resilience.
+"""
 import os
 from typing import Any, Dict, Optional
 from datetime import datetime, timedelta
-from src.tools.base import BaseTool
-import structlog
+from collections import OrderedDict
+from src.tools.base import BaseTool, ToolResult
+from src.core.resilience import exa_circuit, tavily_circuit, CircuitOpenError
 
-logger = structlog.get_logger()
+from src.utils.logging import get_logger
 
-# Simple cache with 15min TTL
-_cache: Dict[str, tuple] = {}
+logger = get_logger()
+
+# LRU cache with bounded size
 CACHE_TTL = timedelta(minutes=15)
+
+class LRUCache:
+    """LRU cache with TTL and bounded size."""
+    def __init__(self, maxsize: int = 100):
+        self._cache = OrderedDict()
+        self._maxsize = maxsize
+
+    def get(self, key: str) -> Optional[tuple]:
+        """Get cached value if valid."""
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+        return None
+
+    def set(self, key: str, value: tuple):
+        """Set cache value, evicting LRU if at capacity."""
+        if key in self._cache:
+            self._cache.move_to_end(key)
+        else:
+            if len(self._cache) >= self._maxsize:
+                self._cache.popitem(last=False)
+        self._cache[key] = value
+
+_cache = LRUCache(maxsize=100)
 
 
 class WebSearchTool(BaseTool):
@@ -67,8 +96,9 @@ class WebSearchTool(BaseTool):
     def _get_cached(self, query: str) -> Optional[str]:
         """Get cached result if valid."""
         key = query.lower().strip()
-        if key in _cache:
-            result, timestamp = _cache[key]
+        cached = _cache.get(key)
+        if cached:
+            result, timestamp = cached
             if datetime.now() - timestamp < CACHE_TTL:
                 logger.info("cache_hit", query=query[:30])
                 return result
@@ -77,37 +107,51 @@ class WebSearchTool(BaseTool):
     def _set_cache(self, query: str, result: str):
         """Cache result with timestamp."""
         key = query.lower().strip()
-        _cache[key] = (result, datetime.now())
+        _cache.set(key, (result, datetime.now()))
 
-    async def execute(self, params: Dict[str, Any]) -> str:
+    async def execute(self, params: Dict[str, Any]) -> ToolResult:
         query = params.get("query", "")
 
         if not query:
-            return "Search failed: No query provided"
+            return ToolResult.fail("No query provided")
 
         # Check cache first
         cached = self._get_cached(query)
         if cached:
-            return cached
+            return ToolResult.ok(cached)
 
-        # Try Exa first (neural search)
-        result = await self._search_exa(query)
+        # Try Exa first with circuit breaker
+        exa_result: Optional[ToolResult] = None
+        try:
+            exa_result = await exa_circuit.call(self._search_exa, query)
+        except CircuitOpenError as e:
+            logger.warning("exa_circuit_open", cooldown=e.cooldown_remaining)
+            exa_result = ToolResult.fail(f"Exa circuit open ({e.cooldown_remaining}s)")
 
-        # Fallback to Tavily if Exa fails
-        if result.startswith("Search failed") and self.tavily_client:
+        # If Exa succeeded, cache and return
+        if exa_result and exa_result.success:
+            self._set_cache(query, exa_result.data)
+            return exa_result
+
+        # Fallback to Tavily with circuit breaker if Exa fails
+        if self.tavily_client:
             logger.info("fallback_to_tavily", query=query[:30])
-            result = await self._search_tavily(query)
+            try:
+                tavily_result = await tavily_circuit.call(self._search_tavily, query)
+                if tavily_result.success:
+                    self._set_cache(query, tavily_result.data)
+                return tavily_result
+            except CircuitOpenError as e:
+                logger.warning("tavily_circuit_open", cooldown=e.cooldown_remaining)
+                return ToolResult.fail("All search circuits open")
 
-        # Cache successful results
-        if not result.startswith("Search failed"):
-            self._set_cache(query, result)
+        # Return Exa error if no Tavily fallback
+        return exa_result or ToolResult.fail("No search providers available")
 
-        return result
-
-    async def _search_exa(self, query: str) -> str:
+    async def _search_exa(self, query: str) -> ToolResult:
         """Search using Exa API."""
         if not self.exa_client:
-            return "Search failed: Exa not configured"
+            return ToolResult.fail("Exa not configured")
 
         try:
             result = self.exa_client.search_and_contents(
@@ -129,16 +173,16 @@ class WebSearchTool(BaseTool):
                 output = output[:1997] + "..."
 
             logger.info("exa_search_success", query=query[:30])
-            return output or "No results found."
+            return ToolResult.ok(output or "No results found.")
 
         except Exception as e:
             logger.error("exa_search_error", error=str(e))
-            return f"Search failed: {str(e)[:50]}"
+            return ToolResult.fail(f"Exa search failed: {str(e)[:50]}")
 
-    async def _search_tavily(self, query: str) -> str:
+    async def _search_tavily(self, query: str) -> ToolResult:
         """Fallback search using Tavily API."""
         if not self.tavily_client:
-            return "Search failed: No search providers available"
+            return ToolResult.fail("No search providers available")
 
         try:
             result = self.tavily_client.search(
@@ -159,8 +203,8 @@ class WebSearchTool(BaseTool):
                 output = output[:1997] + "..."
 
             logger.info("tavily_search_success", query=query[:30])
-            return output or "No results found."
+            return ToolResult.ok(output or "No results found.")
 
         except Exception as e:
             logger.error("tavily_search_error", error=str(e))
-            return f"Search failed: {str(e)[:50]}"
+            return ToolResult.fail(f"Tavily search failed: {str(e)[:50]}")

@@ -1,9 +1,10 @@
 """Tool registry for managing and executing tools."""
 from typing import Dict, List, Optional
-from src.tools.base import BaseTool
-import structlog
+from src.tools.base import BaseTool, ToolResult
 
-logger = structlog.get_logger()
+from src.utils.logging import get_logger
+
+logger = get_logger()
 
 
 class ToolRegistry:
@@ -21,16 +22,16 @@ class ToolRegistry:
         """Get all tool definitions in Anthropic format."""
         return [t.to_anthropic_format() for t in self._tools.values()]
 
-    async def execute(self, name: str, params: dict) -> str:
+    async def execute(self, name: str, params: dict) -> ToolResult:
         """Execute a tool by name."""
         tool = self._tools.get(name)
         if not tool:
-            return f"Error: Unknown tool '{name}'"
+            return ToolResult.fail(f"Unknown tool '{name}'")
         try:
             return await tool.execute(params)
         except Exception as e:
             logger.error("tool_execution_error", tool=name, error=str(e))
-            return f"Tool error: {str(e)[:100]}"
+            return ToolResult.fail(f"Tool error: {str(e)[:100]}")
 
 
 # Global registry singleton

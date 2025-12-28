@@ -1,16 +1,34 @@
-"""Qdrant Cloud vector memory service."""
+"""Qdrant Cloud vector memory service.
+
+II Framework Integration:
+- Derived index (rebuildable from Firebase)
+- Semantic skill routing
+- Cross-skill knowledge search
+- Fallback to Firebase keyword search
+"""
 from typing import List, Dict, Optional, Any
 import os
 from datetime import datetime
-import structlog
 
-logger = structlog.get_logger()
+from src.utils.logging import get_logger
+from src.core.resilience import qdrant_circuit, CircuitOpenError
+
+logger = get_logger()
 
 # Qdrant Cloud client
 _client = None
 _enabled = False
 
 VECTOR_DIM = 1024  # Z.AI embedding-3 default dimension
+
+# Collection names
+COLLECTIONS = {
+    "skills": "Semantic skill matching for routing",
+    "knowledge": "Cross-skill insights and learnings",
+    "conversations": "Chat history for context",
+    "errors": "Error pattern matching",
+    "tasks": "Task context for similar task lookup",
+}
 
 
 def is_enabled() -> bool:
@@ -113,34 +131,44 @@ async def search_conversations(
     if not client:
         return []
 
-    from qdrant_client.http import models
+    async def _search_internal():
+        from qdrant_client.http import models
 
-    filter_conditions = None
-    if user_id:
-        filter_conditions = models.Filter(
-            must=[
-                models.FieldCondition(
-                    key="user_id",
-                    match=models.MatchValue(value=user_id)
-                )
-            ]
+        filter_conditions = None
+        if user_id:
+            filter_conditions = models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="user_id",
+                        match=models.MatchValue(value=user_id)
+                    )
+                ]
+            )
+
+        results = client.search(
+            collection_name="conversations",
+            query_vector=embedding,
+            query_filter=filter_conditions,
+            limit=limit
         )
 
-    results = client.search(
-        collection_name="conversations",
-        query_vector=embedding,
-        query_filter=filter_conditions,
-        limit=limit
-    )
+        return [
+            {
+                "id": r.id,
+                "score": r.score,
+                **r.payload
+            }
+            for r in results
+        ]
 
-    return [
-        {
-            "id": r.id,
-            "score": r.score,
-            **r.payload
-        }
-        for r in results
-    ]
+    try:
+        return await qdrant_circuit.call(_search_internal, timeout=15.0)
+    except CircuitOpenError:
+        logger.warning("qdrant_circuit_open", operation="search_conversations")
+        return []
+    except Exception as e:
+        logger.error("qdrant_search_error", error=str(e)[:50])
+        return []
 
 
 # ==================== Knowledge ====================
@@ -189,34 +217,44 @@ async def search_knowledge(
     if not client:
         return []
 
-    from qdrant_client.http import models
+    async def _search_internal():
+        from qdrant_client.http import models
 
-    filter_conditions = None
-    if topic:
-        filter_conditions = models.Filter(
-            must=[
-                models.FieldCondition(
-                    key="topic",
-                    match=models.MatchValue(value=topic)
-                )
-            ]
+        filter_conditions = None
+        if topic:
+            filter_conditions = models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="topic",
+                        match=models.MatchValue(value=topic)
+                    )
+                ]
+            )
+
+        results = client.search(
+            collection_name="knowledge",
+            query_vector=embedding,
+            query_filter=filter_conditions,
+            limit=limit
         )
 
-    results = client.search(
-        collection_name="knowledge",
-        query_vector=embedding,
-        query_filter=filter_conditions,
-        limit=limit
-    )
+        return [
+            {
+                "id": r.id,
+                "score": r.score,
+                **r.payload
+            }
+            for r in results
+        ]
 
-    return [
-        {
-            "id": r.id,
-            "score": r.score,
-            **r.payload
-        }
-        for r in results
-    ]
+    try:
+        return await qdrant_circuit.call(_search_internal, timeout=15.0)
+    except CircuitOpenError:
+        logger.warning("qdrant_circuit_open", operation="search_knowledge")
+        return []
+    except Exception as e:
+        logger.error("qdrant_search_knowledge_error", error=str(e)[:50])
+        return []
 
 
 # ==================== Tasks ====================
@@ -291,3 +329,310 @@ async def search_similar_tasks(
         }
         for r in results
     ]
+
+
+# ==================== Skills Collection (for Routing) ====================
+
+async def store_skill(
+    skill_id: str,
+    name: str,
+    description: str,
+    embedding: List[float],
+    category: Optional[str] = None
+) -> None:
+    """Store skill for semantic routing."""
+    client = get_client()
+    if not client:
+        return
+
+    from qdrant_client.http import models
+
+    client.upsert(
+        collection_name="skills",
+        points=[
+            models.PointStruct(
+                id=skill_id,
+                vector=embedding,
+                payload={
+                    "name": name,
+                    "description": description,
+                    "category": category,
+                    "firebase_ref": f"skills/{skill_id}",
+                    "updated_at": datetime.utcnow().isoformat()
+                }
+            )
+        ]
+    )
+
+
+async def search_skills(
+    embedding: List[float],
+    limit: int = 3,
+    category: Optional[str] = None
+) -> List[Dict]:
+    """Find matching skills for routing."""
+    client = get_client()
+    if not client:
+        return []
+
+    from qdrant_client.http import models
+
+    filter_conditions = None
+    if category:
+        filter_conditions = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="category",
+                    match=models.MatchValue(value=category)
+                )
+            ]
+        )
+
+    results = client.search(
+        collection_name="skills",
+        query_vector=embedding,
+        query_filter=filter_conditions,
+        limit=limit
+    )
+
+    return [
+        {
+            "id": r.id,
+            "score": r.score,
+            **r.payload
+        }
+        for r in results
+    ]
+
+
+# ==================== Errors Collection ====================
+
+async def store_error_pattern(
+    error_id: str,
+    error_description: str,
+    solution: str,
+    embedding: List[float],
+    source_skill: str
+) -> None:
+    """Store error pattern for matching."""
+    client = get_client()
+    if not client:
+        return
+
+    from qdrant_client.http import models
+
+    client.upsert(
+        collection_name="errors",
+        points=[
+            models.PointStruct(
+                id=error_id,
+                vector=embedding,
+                payload={
+                    "description": error_description,
+                    "solution": solution,
+                    "source_skill": source_skill,
+                    "firebase_ref": f"errors/{error_id}",
+                    "created_at": datetime.utcnow().isoformat()
+                }
+            )
+        ]
+    )
+
+
+async def search_error_patterns(
+    embedding: List[float],
+    limit: int = 3
+) -> List[Dict]:
+    """Find similar error patterns."""
+    client = get_client()
+    if not client:
+        return []
+
+    results = client.search(
+        collection_name="errors",
+        query_vector=embedding,
+        limit=limit
+    )
+
+    return [
+        {
+            "id": r.id,
+            "score": r.score,
+            **r.payload
+        }
+        for r in results
+    ]
+
+
+# ==================== Rebuild from Firebase ====================
+
+async def rebuild_from_firebase() -> Dict[str, int]:
+    """Rebuild all Qdrant collections from Firebase.
+
+    This is the disaster recovery function - Qdrant is derived,
+    Firebase is the source of truth.
+
+    Returns:
+        Dict with counts per collection rebuilt
+    """
+    from src.services.firebase import get_db
+    from src.services.embeddings import get_embedding
+
+    client = get_client()
+    if not client:
+        return {"status": "skipped", "reason": "Qdrant not configured"}
+
+    from qdrant_client.http import models
+
+    counts = {"skills": 0, "knowledge": 0, "errors": 0}
+    db = get_db()
+
+    # Rebuild skills collection
+    try:
+        skills = db.collection("skills").get()
+        for skill in skills:
+            data = skill.to_dict()
+            desc = data.get("description", data.get("name", ""))
+            if desc:
+                embedding = get_embedding(desc)
+                client.upsert(
+                    collection_name="skills",
+                    points=[
+                        models.PointStruct(
+                            id=skill.id,
+                            vector=embedding,
+                            payload={
+                                "name": data.get("name", skill.id),
+                                "description": desc,
+                                "firebase_ref": f"skills/{skill.id}"
+                            }
+                        )
+                    ]
+                )
+                counts["skills"] += 1
+    except Exception as e:
+        logger.error("rebuild_skills_error", error=str(e))
+
+    # Rebuild knowledge from decisions
+    try:
+        decisions = db.collection("decisions") \
+            .where("valid_until", "==", None) \
+            .get()
+
+        for dec in decisions:
+            data = dec.to_dict()
+            text = f"{data.get('condition', '')} {data.get('action', '')}"
+            if text.strip():
+                embedding = get_embedding(text)
+                client.upsert(
+                    collection_name="knowledge",
+                    points=[
+                        models.PointStruct(
+                            id=dec.id,
+                            vector=embedding,
+                            payload={
+                                "type": "decision",
+                                "condition": data.get("condition"),
+                                "action": data.get("action"),
+                                "confidence": data.get("confidence"),
+                                "firebase_ref": f"decisions/{dec.id}"
+                            }
+                        )
+                    ]
+                )
+                counts["knowledge"] += 1
+    except Exception as e:
+        logger.error("rebuild_knowledge_error", error=str(e))
+
+    logger.info("qdrant_rebuilt", counts=counts)
+    return counts
+
+
+# ==================== Search with Firebase Fallback ====================
+
+async def search_with_fallback(
+    collection: str,
+    embedding: List[float],
+    query_text: str,
+    limit: int = 5
+) -> List[Dict]:
+    """Search Qdrant with Firebase keyword fallback.
+
+    Args:
+        collection: Qdrant collection name
+        embedding: Query embedding
+        query_text: Original query text (for fallback)
+        limit: Max results
+
+    Returns:
+        Search results from Qdrant or Firebase fallback
+    """
+    client = get_client()
+
+    # Try Qdrant first
+    if client:
+        try:
+            results = client.search(
+                collection_name=collection,
+                query_vector=embedding,
+                limit=limit
+            )
+
+            if results:
+                return [
+                    {
+                        "id": r.id,
+                        "score": r.score,
+                        "source": "qdrant",
+                        **r.payload
+                    }
+                    for r in results
+                ]
+        except Exception as e:
+            logger.warning("qdrant_search_failed", error=str(e))
+
+    # Fallback to Firebase keyword search
+    logger.info("using_firebase_fallback", collection=collection)
+
+    from src.services.firebase import keyword_search
+
+    # Map collection to Firebase collection
+    firebase_collection = {
+        "knowledge": "decisions",
+        "skills": "skills",
+        "errors": "logs",
+    }.get(collection, collection)
+
+    keywords = query_text.lower().split()
+    results = await keyword_search(firebase_collection, keywords, limit)
+
+    return [
+        {**r, "source": "firebase_fallback"}
+        for r in results
+    ]
+
+
+# ==================== Health Check ====================
+
+def health_check() -> Dict[str, Any]:
+    """Check Qdrant availability and collection status."""
+    client = get_client()
+    if not client:
+        return {"status": "disabled", "reason": "Not configured"}
+
+    try:
+        collections = client.get_collections()
+        collection_names = [c.name for c in collections.collections]
+
+        missing = [
+            name for name in COLLECTIONS.keys()
+            if name not in collection_names
+        ]
+
+        return {
+            "status": "healthy" if not missing else "degraded",
+            "collections": collection_names,
+            "missing": missing
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}

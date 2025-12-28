@@ -8,11 +8,11 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Dict, Optional, List
 from pathlib import Path
-import structlog
 
+from src.utils.logging import get_logger
 from src.services.llm import get_llm_client
 
-logger = structlog.get_logger()
+logger = get_logger()
 
 
 class BaseAgent(ABC):

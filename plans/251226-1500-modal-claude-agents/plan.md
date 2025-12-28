@@ -1,7 +1,8 @@
 ---
 title: "Modal.com Self-Improving Agents (II Framework)"
 description: "Deploy self-improving AI agents on Modal using the Information & Implementation framework"
-status: pending
+status: superseded
+superseded_by: "plans/251228-0935-hybrid-agent-architecture"
 priority: P1
 effort: 20h
 issue: null

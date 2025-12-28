@@ -1,7 +1,7 @@
 ---
 title: "Agent Reliability Improvements"
 description: "Enhance agent team reliability with circuit breakers, retries, health checks, and observability"
-status: pending
+status: superseded
 priority: P1
 effort: 8h
 issue: null

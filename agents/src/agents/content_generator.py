@@ -4,11 +4,11 @@ Generates, translates, summarizes, and rewrites content.
 Uses Z.AI GLM for LLM operations.
 """
 from typing import Dict, List, Optional
-import structlog
 
+from src.utils.logging import get_logger
 from src.agents.base import BaseAgent
 
-logger = structlog.get_logger()
+logger = get_logger()
 
 
 class ContentAgent(BaseAgent):

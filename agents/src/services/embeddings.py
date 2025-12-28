@@ -5,9 +5,10 @@ If embedding models are not available, this service gracefully degrades.
 """
 import os
 from typing import List, Optional
-import structlog
 
-logger = structlog.get_logger()
+from src.utils.logging import get_logger
+
+logger = get_logger()
 
 # Zhipu AI embedding model
 EMBEDDING_MODEL = "embedding-2"

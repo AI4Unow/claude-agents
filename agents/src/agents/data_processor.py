@@ -6,12 +6,12 @@ Uses Z.AI GLM for LLM operations.
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 import json
-import structlog
 
+from src.utils.logging import get_logger
 from src.agents.base import BaseAgent
 from src.services.llm import get_llm_client
 
-logger = structlog.get_logger()
+logger = get_logger()
 
 
 class DataAgent(BaseAgent):

@@ -1,7 +1,8 @@
 ---
 title: "Smart Chatbot with Tool Capabilities"
 description: "Add tool use, web search, and agentic loop to Telegram chatbot"
-status: pending
+status: completed
+completed: 2025-12-27
 priority: P1
 effort: 6h
 branch: main
