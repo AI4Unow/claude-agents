@@ -222,6 +222,7 @@ firebase_circuit = CircuitBreaker("firebase", threshold=5, cooldown=60)
 qdrant_circuit = CircuitBreaker("qdrant", threshold=5, cooldown=60)
 claude_circuit = CircuitBreaker("claude_api", threshold=3, cooldown=60)
 telegram_circuit = CircuitBreaker("telegram_api", threshold=5, cooldown=30)
+gemini_circuit = CircuitBreaker("gemini_api", threshold=3, cooldown=60)
 
 
 def get_circuit_stats() -> Dict[str, Dict]:
@@ -233,6 +234,7 @@ def get_circuit_stats() -> Dict[str, Dict]:
         "qdrant": qdrant_circuit.get_stats(),
         "claude_api": claude_circuit.get_stats(),
         "telegram_api": telegram_circuit.get_stats(),
+        "gemini_api": gemini_circuit.get_stats(),
     }
 
 
@@ -244,6 +246,7 @@ def reset_all_circuits():
     qdrant_circuit.reset()
     claude_circuit.reset()
     telegram_circuit.reset()
+    gemini_circuit.reset()
 
 
 def with_retry(

@@ -1,0 +1,174 @@
+"""Gemini skill tools for Modal agents."""
+from typing import Dict, Optional, Callable
+
+from src.services.gemini import get_gemini_client, ResearchReport
+from src.utils.logging import get_logger
+
+logger = get_logger()
+
+
+async def execute_deep_research(
+    query: str,
+    user_id: int = 0,
+    chat_id: int = 0,
+    progress_callback: Callable[[str], None] = None,
+    max_iterations: int = 10,
+) -> Dict:
+    """Execute deep research skill.
+
+    Args:
+        query: Research topic
+        user_id: Telegram user ID for notifications
+        chat_id: Telegram chat ID for progress updates
+        progress_callback: Optional callback for progress
+        max_iterations: Max research iterations
+
+    Returns:
+        Dict with report and metadata
+    """
+    client = get_gemini_client()
+
+    try:
+        report = await client.deep_research(
+            query=query,
+            on_progress=progress_callback,
+            max_iterations=max_iterations,
+        )
+
+        # Format citations
+        citations_md = "\n".join([
+            f"- [{c['title'][:50]}]({c['url']})"
+            for c in report.citations[:10]
+            if c.get('url')
+        ])
+
+        return {
+            "success": True,
+            "report": report.sections[0]["content"],
+            "summary": report.summary,
+            "citations": citations_md,
+            "query_count": report.query_count,
+            "duration_seconds": report.duration_seconds,
+            "thinking_trace": report.thinking_trace,
+        }
+
+    except Exception as e:
+        logger.error("deep_research_error", error=str(e)[:100])
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+async def execute_grounded_query(
+    query: str,
+    sources: list = None,
+) -> Dict:
+    """Execute grounded query skill.
+
+    Args:
+        query: Factual query
+        sources: ["google_search", "google_maps"]
+
+    Returns:
+        Dict with answer and citations
+    """
+    client = get_gemini_client()
+
+    try:
+        response = await client.grounded_query(
+            query=query,
+            grounding_sources=sources or ["google_search"],
+        )
+
+        citations_md = "\n".join([
+            f"- [{c['title'][:50]}]({c['url']})"
+            for c in response.citations[:5]
+            if c.get('url')
+        ])
+
+        return {
+            "success": True,
+            "answer": response.text,
+            "citations": citations_md,
+        }
+
+    except Exception as e:
+        logger.error("grounded_query_error", error=str(e)[:100])
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+async def execute_thinking(
+    prompt: str,
+    thinking_level: str = "high",
+) -> Dict:
+    """Execute thinking skill with configurable depth.
+
+    Args:
+        prompt: Problem to analyze
+        thinking_level: minimal, low, medium, high
+
+    Returns:
+        Dict with analysis
+    """
+    client = get_gemini_client()
+
+    try:
+        result = await client.chat(
+            messages=[{"role": "user", "content": prompt}],
+            thinking_level=thinking_level,
+            model="gemini-2.0-flash-001",
+        )
+
+        return {
+            "success": True,
+            "analysis": result,
+            "thinking_level": thinking_level,
+        }
+
+    except Exception as e:
+        logger.error("thinking_error", error=str(e)[:100])
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+async def execute_vision(
+    image_base64: str,
+    prompt: str,
+    media_type: str = "image/jpeg",
+) -> Dict:
+    """Execute vision analysis skill.
+
+    Args:
+        image_base64: Base64 encoded image
+        prompt: Analysis prompt
+        media_type: Image MIME type
+
+    Returns:
+        Dict with analysis
+    """
+    client = get_gemini_client()
+
+    try:
+        result = await client.analyze_image(
+            image_base64=image_base64,
+            prompt=prompt,
+            media_type=media_type,
+        )
+
+        return {
+            "success": True,
+            "analysis": result,
+        }
+
+    except Exception as e:
+        logger.error("vision_error", error=str(e)[:100])
+        return {
+            "success": False,
+            "error": str(e),
+        }

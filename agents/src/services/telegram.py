@@ -153,3 +153,77 @@ def build_improvement_keyboard(proposal_id: str) -> list:
             {"text": "❌ Reject", "callback_data": f"improve_reject:{proposal_id}"},
         ]
     ]
+
+
+async def update_progress_message(
+    chat_id: int,
+    message_id: int,
+    text: str,
+    bot_token: str = None,
+) -> bool:
+    """Update existing message with progress (for streaming).
+
+    Uses edit_message_text to update in-place.
+    Rate limited by Telegram to ~30 edits/minute.
+
+    Args:
+        chat_id: Telegram chat ID
+        message_id: Message ID to update
+        text: New message text
+        bot_token: Optional bot token override
+
+    Returns:
+        True if update successful
+    """
+    import httpx
+    import os
+
+    token = bot_token or os.environ.get("TELEGRAM_BOT_TOKEN")
+    url = f"https://api.telegram.org/bot{token}/editMessageText"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json={
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": text,
+                "parse_mode": "HTML",
+            })
+            return response.status_code == 200
+    except Exception:
+        return False
+
+
+async def send_with_progress(
+    chat_id: int,
+    initial_text: str,
+    bot_token: str = None,
+) -> int:
+    """Send initial message and return message_id for progress updates.
+
+    Args:
+        chat_id: Telegram chat ID
+        initial_text: Initial message text
+        bot_token: Optional bot token override
+
+    Returns:
+        message_id for subsequent updates, 0 if failed
+    """
+    import httpx
+    import os
+
+    token = bot_token or os.environ.get("TELEGRAM_BOT_TOKEN")
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json={
+                "chat_id": chat_id,
+                "text": initial_text,
+                "parse_mode": "HTML",
+            })
+            if response.status_code == 200:
+                return response.json()["result"]["message_id"]
+            return 0
+    except Exception:
+        return 0

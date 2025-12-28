@@ -2093,3 +2093,77 @@ def main(sync: bool = False):
     result = test_llm.remote()
     print(f"LLM test result: {result}")
     print("\nDeploy URL: https://duc-a-nguyen--claude-agents-telegram-chat-agent.modal.run")
+
+
+@app.local_entrypoint()
+def test_gemini():
+    """Test Gemini client initialization."""
+    import asyncio
+
+    async def run():
+        # Import inside function to use Modal environment
+        import sys
+        sys.path.insert(0, "/root")
+
+        from src.services.gemini import get_gemini_client
+
+        client = get_gemini_client()
+        print(f"Project: {client.project_id}")
+        print(f"Location: {client.location}")
+
+        result = await client.chat(
+            messages=[{"role": "user", "content": "Hello, test message. Reply briefly."}],
+            thinking_level="minimal"
+        )
+        print(f"Response: {result[:200]}")
+
+    asyncio.run(run())
+
+
+@app.local_entrypoint()
+def test_grounding():
+    """Test grounded query."""
+    import asyncio
+
+    async def run():
+        import sys
+        sys.path.insert(0, "/root")
+
+        from src.services.gemini import get_gemini_client
+
+        client = get_gemini_client()
+        result = await client.grounded_query(
+            query="What's the current price of Bitcoin?"
+        )
+        print(f"Answer: {result.text[:300]}")
+        print(f"Citations: {len(result.citations)}")
+
+    asyncio.run(run())
+
+
+@app.local_entrypoint()
+def test_deep_research():
+    """Test deep research skill."""
+    import asyncio
+
+    async def run():
+        import sys
+        sys.path.insert(0, "/root")
+
+        from src.tools.gemini_tools import execute_deep_research
+
+        def progress(s):
+            print(f"Progress: {s}")
+
+        result = await execute_deep_research(
+            query="Current state of AI agents in 2025",
+            progress_callback=progress,
+            max_iterations=2
+        )
+        print(f"\nSuccess: {result['success']}")
+        if result['success']:
+            print(f"Summary: {result['summary'][:300]}")
+            print(f"Queries: {result['query_count']}")
+            print(f"Duration: {result['duration_seconds']:.1f}s")
+
+    asyncio.run(run())
