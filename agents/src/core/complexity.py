@@ -95,7 +95,7 @@ def classify_complexity_sync(message: str) -> ComplexityType:
 
         # Use Haiku for fast classification (sync call)
         response = client.client.messages.create(
-            model="kiro-claude-haiku-4-5-agentic",
+            model="claude-4-5-haiku-latest",
             max_tokens=10,
             messages=[{"role": "user", "content": prompt}]
         )
