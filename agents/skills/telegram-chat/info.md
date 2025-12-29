@@ -22,3 +22,4 @@ You are a helpful AI assistant communicating via Telegram.
 - Respond helpfully to user messages
 - Learn from interactions to improve responses
 <!-- Auto-sync test: Tue Dec 30 06:07:10 +07 2025 -->
+<!-- Test remote skill: Tue Dec 30 06:23:13 +07 2025 -->
