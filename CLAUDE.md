@@ -12,14 +12,23 @@ See [docs/project-overview-pdr.md](docs/project-overview-pdr.md) for full requir
 
 **Phase:** Production MVP
 **Deploy URL:** https://duc-a-nguyen--claude-agents-telegramchatagent-app.modal.run
-**Last Updated:** Dec 29, 2025
+**Last Updated:** Dec 30, 2025
 
 ### Key Features
 - 7 circuit breakers (claude, exa, tavily, firebase, qdrant, telegram, gemini)
-- 55 skills (local, remote, hybrid deployment)
+- 53 skills (local, remote, hybrid deployment)
 - Gemini API integration (deep research, grounding, vision, thinking)
 - Firebase Storage for research reports
 - User tier system (guest, user, developer, admin)
+- Skill auto-sync watcher with launchd
+
+### LLM Models (via ai4u.now API)
+| Purpose | Model |
+|---------|-------|
+| Default (agentic) | `kiro-claude-opus-4-5-agentic` |
+| Simple chat | `kiro-claude-haiku-4-5` |
+| Classifiers | `kiro-claude-haiku-4-5` |
+| Vision | `kiro-claude-opus-4-5-agentic` |
 
 ## Build & Development Commands
 

@@ -477,13 +477,29 @@ research-reports/{userId}/{reportId}.md
 - Thread-safe operations
 - Cache warming on container start
 
-## Recent Changes (Dec 29, 2025)
+## Recent Changes (Dec 30, 2025)
 
-1. **Markdown-to-HTML conversion** - Fixed Telegram rendering
-2. **Complexity detector** - `src/core/complexity.py` for task classification
-3. **Stress test framework** - Locust + chaos engineering
-4. **81 unit tests** - All passing
-5. **53 skills** - Expanded from 24
+1. **Model names corrected** - Using kiro-claude-* from ai4u.now API
+2. **Intent classifier** - `src/core/intent.py` for semantic routing
+3. **Skill auto-sync watcher** - `scripts/skill-sync-watcher.py` with launchd
+4. **Markdown-to-HTML conversion** - Fixed Telegram rendering
+5. **Complexity detector** - `src/core/complexity.py` for task classification
+6. **Stress test framework** - Locust + chaos engineering
+7. **53 skills** - With local/remote/both categorization
+
+## LLM Models (via ai4u.now API)
+
+| Purpose | Model | File |
+|---------|-------|------|
+| Default (agentic) | `kiro-claude-opus-4-5-agentic` | `llm.py:17` |
+| Simple chat | `kiro-claude-haiku-4-5` | `main.py` |
+| Classifiers | `kiro-claude-haiku-4-5` | `complexity.py`, `intent.py` |
+| Vision | `kiro-claude-opus-4-5-agentic` | `llm.py:119` |
+
+Available models on API:
+- **Claude**: `kiro-claude-opus-4-5`, `kiro-claude-sonnet-4-5`, `kiro-claude-sonnet-4`, `kiro-claude-haiku-4-5`
+- **Claude Agentic**: `kiro-claude-opus-4-5-agentic`, `kiro-claude-sonnet-4-5-agentic`, `kiro-claude-sonnet-4-agentic`, `kiro-claude-haiku-4-5-agentic`
+- **Gemini**: `gemini-3-flash-preview`, `gemini-3-pro-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`
 
 ## Related Documents
 
