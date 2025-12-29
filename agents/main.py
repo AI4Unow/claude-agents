@@ -463,6 +463,59 @@ def create_web_app():
             }
         }
 
+    # ==================== Reports API ====================
+
+    @web_app.get("/api/reports")
+    async def list_reports(user_id: int):
+        """List reports for a user."""
+        from src.services.firebase import list_user_reports
+
+        if not user_id:
+            return {"ok": False, "error": "user_id required"}
+
+        reports = await list_user_reports(user_id)
+        return {
+            "ok": True,
+            "reports": reports,
+            "count": len(reports)
+        }
+
+    @web_app.get("/api/reports/{report_id}")
+    async def get_report(report_id: str, user_id: int):
+        """Get report download URL."""
+        from src.services.firebase import get_report_url
+
+        if not user_id:
+            return {"ok": False, "error": "user_id required"}
+
+        url = await get_report_url(user_id, report_id)
+        if not url:
+            return {"ok": False, "error": "Report not found or access denied"}
+
+        return {
+            "ok": True,
+            "report_id": report_id,
+            "download_url": url
+        }
+
+    @web_app.get("/api/reports/{report_id}/content")
+    async def get_report_content_api(report_id: str, user_id: int):
+        """Get report content directly."""
+        from src.services.firebase import get_report_content
+
+        if not user_id:
+            return {"ok": False, "error": "user_id required"}
+
+        content = await get_report_content(user_id, report_id)
+        if not content:
+            return {"ok": False, "error": "Report not found or access denied"}
+
+        return {
+            "ok": True,
+            "report_id": report_id,
+            "content": content
+        }
+
     return web_app
 
 
@@ -603,25 +656,103 @@ async def handle_command(command: str, user: dict, chat_id: int) -> str:
         return f"Hello {user.get('first_name', 'there')}! I'm your AI assistant powered by II Framework.\n\nUse /skills to browse available skills or /help for commands."
 
     elif cmd == "/help":
-        return (
-            "<b>Available commands:</b>\n\n"
-            "/start - Welcome\n"
-            "/help - This message\n"
-            "/status - Check agent status\n"
-            "/skills - Browse all skills (interactive menu)\n"
-            "/skill &lt;name&gt; &lt;task&gt; - Execute a skill directly\n"
-            "/mode &lt;simple|routed|evaluated&gt; - Set execution mode\n"
-            "/cancel - Cancel pending operation\n"
-            "/clear - Clear conversation history\n"
-            "/translate &lt;text&gt; - Translate to English\n"
-            "/summarize &lt;text&gt; - Summarize text\n"
-            "/rewrite &lt;text&gt; - Improve text\n"
-            "/remind &lt;time&gt; &lt;message&gt; - Set reminder (admin)\n"
-            "/reminders - List pending reminders (admin)"
-        )
+        # Get user tier for context-aware help
+        from src.core.state import get_state_manager
+        from src.services.firebase import has_permission
+        state = get_state_manager()
+        tier = await state.get_user_tier_cached(user.get("id"))
+
+        # Base commands (everyone)
+        help_text = [
+            "<b>📖 Commands</b>\n",
+            "<b>Basic:</b>",
+            "/start - Welcome message",
+            "/help - This help text",
+            "/status - Check status and tier",
+            "/tier - Check your tier",
+            "/clear - Clear conversation",
+        ]
+
+        # Skill commands (all users)
+        help_text.extend([
+            "",
+            "<b>Skills:</b>",
+            "/skills - Browse skills (menu)",
+            "/skill &lt;name&gt; &lt;task&gt; - Execute skill",
+            "/mode &lt;simple|routed|auto&gt; - Set mode",
+            "/task &lt;id&gt; - Check task status",
+        ])
+
+        # Quick actions
+        help_text.extend([
+            "",
+            "<b>Quick Actions:</b>",
+            "/translate &lt;text&gt; - Translate to English",
+            "/summarize &lt;text&gt; - Summarize text",
+            "/rewrite &lt;text&gt; - Improve text",
+        ])
+
+        # Developer+ commands
+        if has_permission(tier, "developer"):
+            help_text.extend([
+                "",
+                "<b>Developer:</b>",
+                "/traces [limit] - Recent traces",
+                "/trace &lt;id&gt; - Trace details",
+                "/circuits - Circuit breaker status",
+            ])
+
+        # Admin commands
+        admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
+        if str(user.get("id")) == str(admin_id):
+            help_text.extend([
+                "",
+                "<b>Admin:</b>",
+                "/grant &lt;user_id&gt; &lt;tier&gt; - Grant tier",
+                "/revoke &lt;user_id&gt; - Revoke tier",
+                "/admin reset &lt;circuit&gt; - Reset circuit",
+                "/remind &lt;time&gt; &lt;msg&gt; - Set reminder",
+                "/reminders - List reminders",
+            ])
+
+        # Tier info
+        help_text.append(f"\n<i>Your tier: {tier}</i>")
+
+        return "\n".join(help_text)
 
     elif cmd == "/status":
-        return "Agent is running normally."
+        from src.core.state import get_state_manager
+        from src.services.firebase import get_rate_limit
+
+        state = get_state_manager()
+        user_id = user.get("id")
+
+        tier = await state.get_user_tier_cached(user_id)
+        mode = await state.get_user_mode(user_id)
+        limit = get_rate_limit(tier)
+
+        lines = [
+            "<b>📊 Status</b>\n",
+            f"<b>Tier:</b> {tier}",
+            f"<b>Mode:</b> {mode}",
+            f"<b>Rate limit:</b> {limit} req/min",
+        ]
+
+        # Admin sees system status
+        admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
+        if str(user_id) == str(admin_id):
+            from src.core.resilience import get_circuit_stats
+            circuits = get_circuit_stats()
+            open_count = sum(1 for c in circuits.values() if c.get("state") == "open")
+
+            lines.extend([
+                "",
+                "<b>System:</b>",
+                f"Circuits: {open_count}/{len(circuits)} open",
+                f"Cache size: {len(state._l1_cache)}",
+            ])
+
+        return "\n".join(lines)
 
     elif cmd == "/skills":
         # Show inline keyboard with skill categories
@@ -668,12 +799,19 @@ async def handle_command(command: str, user: dict, chat_id: int) -> str:
         return format_skill_result(skill_name, result, duration_ms)
 
     elif cmd == "/mode":
-        valid_modes = ["simple", "routed", "evaluated"]
+        valid_modes = ["simple", "routed", "auto"]  # Updated: replaced "evaluated" with "auto"
         from src.core.state import get_state_manager
         state = get_state_manager()
         if args not in valid_modes:
             current = await state.get_user_mode(user.get("id"))
-            return f"Current mode: <b>{current}</b>\nValid modes: {', '.join(valid_modes)}\nUsage: /mode &lt;mode&gt;"
+            return (
+                f"Current mode: <b>{current}</b>\n\n"
+                "<b>Modes:</b>\n"
+                "• <b>simple</b> - Direct LLM response\n"
+                "• <b>routed</b> - Route to best skill\n"
+                "• <b>auto</b> - Smart detection (recommended)\n\n"
+                f"Usage: /mode <{'|'.join(valid_modes)}>"
+            )
 
         await state.set_user_mode(user.get("id"), args)
         return f"Execution mode set to: <b>{args}</b>"
@@ -772,6 +910,178 @@ async def handle_command(command: str, user: dict, chat_id: int) -> str:
             lines.append(f"• {due_str} - {msg}...")
 
         return "\n".join(lines)
+
+    elif cmd == "/grant":
+        # Admin only
+        admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
+        if str(user.get("id")) != str(admin_id):
+            return "Admin only command."
+
+        parts = args.split()
+        if len(parts) != 2:
+            return "Usage: /grant &lt;telegram_id&gt; &lt;user|developer&gt;"
+
+        try:
+            target_id = int(parts[0])
+        except ValueError:
+            return "Invalid Telegram ID. Must be a number."
+
+        tier = parts[1].lower()
+        if tier not in ["user", "developer"]:
+            return "Tier must be 'user' or 'developer'."
+
+        from src.services.firebase import set_user_tier
+        success = await set_user_tier(target_id, tier, user.get("id"))
+
+        if success:
+            from src.core.state import get_state_manager
+            state = get_state_manager()
+            await state.invalidate_user_tier(target_id)
+            return f"Granted <b>{tier}</b> tier to user {target_id}"
+        else:
+            return "Failed to grant tier. Check logs."
+
+    elif cmd == "/revoke":
+        # Admin only
+        admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
+        if str(user.get("id")) != str(admin_id):
+            return "Admin only command."
+
+        if not args:
+            return "Usage: /revoke &lt;telegram_id&gt;"
+
+        try:
+            target_id = int(args.strip())
+        except ValueError:
+            return "Invalid Telegram ID."
+
+        from src.services.firebase import remove_user_tier
+        success = await remove_user_tier(target_id)
+
+        if success:
+            from src.core.state import get_state_manager
+            state = get_state_manager()
+            await state.invalidate_user_tier(target_id)
+            return f"Revoked access for user {target_id}. Now guest tier."
+        else:
+            return "Failed to revoke tier."
+
+    elif cmd == "/tier":
+        from src.core.state import get_state_manager
+        from src.services.firebase import get_rate_limit
+        state = get_state_manager()
+        tier = await state.get_user_tier_cached(user.get("id"))
+        limit = get_rate_limit(tier)
+        return f"Your tier: <b>{tier}</b>\nRate limit: {limit} requests/min"
+
+    elif cmd == "/traces":
+        # Developer+ only: list recent traces
+        from src.core.state import get_state_manager
+        from src.services.firebase import has_permission
+        from src.core.trace import list_traces
+        from src.services.telegram import format_traces_list
+
+        state = get_state_manager()
+        tier = await state.get_user_tier_cached(user.get("id"))
+
+        if not has_permission(tier, "developer"):
+            return "Access denied. Developer tier required."
+
+        limit = int(args) if args and args.isdigit() else 10
+        limit = min(limit, 20)
+        traces = await list_traces(limit=limit)
+        return format_traces_list(traces)
+
+    elif cmd == "/trace":
+        # Developer+ only: get trace detail
+        from src.core.state import get_state_manager
+        from src.services.firebase import has_permission
+        from src.core.trace import get_trace
+        from src.services.telegram import format_trace_detail
+
+        state = get_state_manager()
+        tier = await state.get_user_tier_cached(user.get("id"))
+
+        if not has_permission(tier, "developer"):
+            return "Access denied. Developer tier required."
+
+        if not args:
+            return "Usage: /trace <trace_id>"
+
+        trace = await get_trace(args.strip())
+        return format_trace_detail(trace)
+
+    elif cmd == "/circuits":
+        # Developer+ only: show circuit breaker status
+        from src.core.state import get_state_manager
+        from src.services.firebase import has_permission
+        from src.core.resilience import get_circuit_stats
+        from src.services.telegram import format_circuits_status
+
+        state = get_state_manager()
+        tier = await state.get_user_tier_cached(user.get("id"))
+
+        if not has_permission(tier, "developer"):
+            return "Access denied. Developer tier required."
+
+        circuits = get_circuit_stats()
+        return format_circuits_status(circuits)
+
+    elif cmd == "/admin":
+        # Admin only: system control commands
+        from src.core.state import get_state_manager
+        from src.services.firebase import has_permission
+        from src.core.resilience import reset_circuit, reset_all_circuits
+
+        state = get_state_manager()
+        tier = await state.get_user_tier_cached(user.get("id"))
+
+        if not has_permission(tier, "admin"):
+            return "Access denied. Admin tier required."
+
+        if not args:
+            return (
+                "<b>Admin Commands:</b>\n\n"
+                "/admin reset <circuit> - Reset specific circuit\n"
+                "/admin reset all - Reset all circuits"
+            )
+
+        parts = args.split()
+        subcmd = parts[0].lower() if parts else ""
+
+        if subcmd == "reset":
+            if len(parts) < 2:
+                return "Usage: /admin reset <circuit_name|all>"
+
+            target = parts[1].lower()
+            if target == "all":
+                reset_all_circuits()
+                return "All circuits have been reset."
+            else:
+                if reset_circuit(target):
+                    return f"Circuit <b>{target}</b> has been reset."
+                else:
+                    return f"Circuit <b>{target}</b> not found. Available: exa_api, tavily_api, firebase, qdrant, claude_api, telegram_api, gemini_api"
+
+        return "Unknown admin command. Use /admin for help."
+
+    elif cmd == "/task":
+        # User+ only: check local task status
+        from src.core.state import get_state_manager
+        from src.services.firebase import has_permission, get_task_result
+        from src.services.telegram import format_task_status
+
+        state = get_state_manager()
+        tier = await state.get_user_tier_cached(user.get("id"))
+
+        if not has_permission(tier, "user"):
+            return "Access denied. User tier required."
+
+        if not args:
+            return "Usage: /task <task_id>"
+
+        task = await get_task_result(args.strip())
+        return format_task_status(task)
 
     else:
         return "Unknown command. Try /help"
@@ -1058,6 +1368,107 @@ def format_error_message(error: str) -> str:
     return "❌ Sorry, something went wrong. Please try again."
 
 
+async def _run_simple(
+    text: str,
+    user: dict,
+    chat_id: int,
+    progress_msg_id: int,
+    progress_callback
+) -> str:
+    """Run direct LLM response (existing agentic loop)."""
+    from src.services.agentic import run_agentic_loop
+    from pathlib import Path
+    import aiofiles
+
+    info_path = Path("/skills/telegram-chat/info.md")
+    system_prompt = "You are a helpful AI assistant with web search capability. Use the web_search tool when users ask about current events, weather, news, prices, or anything requiring up-to-date information."
+
+    if info_path.exists():
+        async with aiofiles.open(info_path, 'r') as f:
+            system_prompt = await f.read()
+
+    return await run_agentic_loop(
+        user_message=text,
+        system=system_prompt,
+        user_id=user.get("id"),
+        progress_callback=progress_callback,
+    )
+
+
+async def _run_routed(
+    text: str,
+    user: dict,
+    chat_id: int,
+    progress_msg_id: int
+) -> str:
+    """Route to best skill and execute."""
+    from src.core.router import SkillRouter
+    import time
+
+    await edit_progress_message(chat_id, progress_msg_id, "🔍 <i>Finding skill...</i>")
+
+    router = SkillRouter()
+    skill = await router.route_single(text)
+
+    if not skill:
+        # No skill matched, fallback to simple
+        async def update_progress(status: str):
+            await edit_progress_message(chat_id, progress_msg_id, status)
+        return await _run_simple(text, user, chat_id, progress_msg_id, update_progress)
+
+    await edit_progress_message(chat_id, progress_msg_id, f"🔧 <i>Using: {skill.name}</i>")
+
+    start = time.time()
+    result = await execute_skill_simple(skill.name, text, {"user": user})
+    duration_ms = int((time.time() - start) * 1000)
+
+    from src.services.telegram import format_skill_result
+    return format_skill_result(skill.name, result, duration_ms)
+
+
+async def _run_orchestrated(
+    text: str,
+    user: dict,
+    chat_id: int,
+    progress_msg_id: int
+) -> str:
+    """Run orchestrated multi-skill execution with Telegram progress."""
+    from src.core.orchestrator import Orchestrator
+    import structlog
+    import time
+
+    logger = structlog.get_logger()
+
+    # Track progress updates to avoid Telegram rate limiting
+    last_update_time = [0.0]  # Use list for mutable closure
+    min_update_interval = 1.0  # 1 second between updates
+
+    async def progress_callback(status: str):
+        """Throttled progress callback for Telegram."""
+        current_time = time.time()
+
+        # Throttle updates to avoid rate limits
+        if current_time - last_update_time[0] < min_update_interval:
+            return
+
+        last_update_time[0] = current_time
+
+        try:
+            await edit_progress_message(chat_id, progress_msg_id, status)
+        except Exception as e:
+            logger.warning("progress_update_failed", error=str(e)[:50])
+
+    orchestrator = Orchestrator()
+
+    result = await orchestrator.execute(
+        task=text,
+        context={"user": user, "user_id": user.get("id")},
+        progress_callback=progress_callback
+    )
+
+    return result
+
+
 async def process_message(
     text: str,
     user: dict,
@@ -1075,6 +1486,14 @@ async def process_message(
 
     logger = structlog.get_logger()
     state = get_state_manager()
+    user_id = user.get("id")
+
+    # Get tier and check rate limit
+    tier = await state.get_user_tier_cached(user_id)
+    allowed, reset_in = state.check_rate_limit(user_id, tier)
+
+    if not allowed:
+        return f"Rate limited. Try again in {reset_in}s.\n\nUpgrade tier for higher limits."
 
     # React to acknowledge receipt
     if message_id:
@@ -1114,21 +1533,31 @@ async def process_message(
             return format_skill_result(pending_skill, result, duration_ms)
 
         # Normal agentic loop
-        # Read instructions from skills volume (async to avoid blocking)
-        info_path = Path("/skills/telegram-chat/info.md")
-        system_prompt = "You are a helpful AI assistant with web search capability. Use the web_search tool when users ask about current events, weather, news, prices, or anything requiring up-to-date information."
+        # Get user's mode preference
+        mode = await state.get_user_mode(user_id)
 
-        if info_path.exists():
-            async with aiofiles.open(info_path, 'r') as f:
-                system_prompt = await f.read()
+        # Route based on mode
+        if mode == "auto":
+            # Classify complexity and route accordingly
+            from src.core.complexity import classify_complexity
+            await edit_progress_message(chat_id, progress_msg_id, "🧠 <i>Analyzing...</i>")
 
-        response = await run_agentic_loop(
-            user_message=text,
-            system=system_prompt,
-            user_id=user.get("id"),
-            skill=pending_skill,  # Pass skill name for tracing
-            progress_callback=update_progress,
-        )
+            complexity = await classify_complexity(text)
+            logger.info("complexity_detected", complexity=complexity, mode=mode)
+
+            if complexity == "complex":
+                await edit_progress_message(chat_id, progress_msg_id, "🔧 <i>Orchestrating...</i>")
+                response = await _run_orchestrated(text, user, chat_id, progress_msg_id)
+            else:
+                response = await _run_simple(text, user, chat_id, progress_msg_id, update_progress)
+
+        elif mode == "routed":
+            # Route to best skill
+            response = await _run_routed(text, user, chat_id, progress_msg_id)
+
+        else:
+            # Default: simple mode - direct LLM response
+            response = await _run_simple(text, user, chat_id, progress_msg_id, update_progress)
 
         # Success reaction
         if message_id:
@@ -2128,12 +2557,13 @@ async def _test_grounding_remote():
 
 
 @app.function(image=image, secrets=secrets, timeout=300)
-async def _test_deep_research_remote():
+async def _test_deep_research_remote(user_id: int = 123456):
     """Run deep research test on Modal."""
     from src.tools.gemini_tools import execute_deep_research
 
     result = await execute_deep_research(
         query="Current state of AI agents in 2025",
+        user_id=user_id,
         progress_callback=lambda s: print(f"Progress: {s}"),
         max_iterations=2
     )
@@ -2166,6 +2596,13 @@ def test_deep_research():
     result = _test_deep_research_remote.remote()
     print(f"\nSuccess: {result['success']}")
     if result['success']:
-        print(f"Summary: {result['summary'][:300]}")
         print(f"Queries: {result['query_count']}")
         print(f"Duration: {result['duration_seconds']:.1f}s")
+        if result.get('report_id'):
+            print(f"\nReport ID: {result['report_id']}")
+            print(f"Download URL: {result['download_url']}")
+        print(f"\n{'='*60}\nFULL REPORT:\n{'='*60}\n")
+        print(result.get('report', result['summary']))
+        if result.get('citations'):
+            print(f"\n{'='*60}\nCITATIONS:\n{'='*60}\n")
+            print(result['citations'])
