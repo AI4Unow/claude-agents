@@ -2,8 +2,9 @@
 """Watch skills directory for changes and auto-sync to GitHub + Modal.
 
 Monitors agents/skills/ for file changes and:
-1. Commits and pushes to GitHub
-2. Deploys to Modal
+1. Categorizes skills by deployment type (local/remote/both)
+2. Commits and pushes to GitHub
+3. Deploys to Modal only if remote/both skills changed
 
 Usage:
     python3 skill-sync-watcher.py                    # Run watcher
@@ -12,10 +13,10 @@ Usage:
 """
 import argparse
 import hashlib
-import os
+import re
 import subprocess
-import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -25,6 +26,60 @@ REPO_ROOT = Path(__file__).parent.parent.parent  # /Agents/
 AGENTS_DIR = REPO_ROOT / "agents"
 SKILLS_DIR = AGENTS_DIR / "skills"
 STATE_FILE = REPO_ROOT / ".skill-sync-state"
+
+
+@dataclass
+class SkillInfo:
+    """Skill metadata for categorization."""
+    name: str
+    deployment: str  # local, remote, both
+
+    @property
+    def needs_modal(self) -> bool:
+        """Check if skill needs Modal deployment."""
+        return self.deployment in ("remote", "both")
+
+
+def get_skill_deployment(skill_dir: Path) -> str:
+    """Parse deployment field from skill's info.md frontmatter."""
+    info_file = skill_dir / "info.md"
+    if not info_file.exists():
+        return "remote"  # Default to remote
+
+    content = info_file.read_text()
+
+    # Parse YAML frontmatter
+    if not content.startswith("---"):
+        return "remote"
+
+    end_match = re.search(r'\n---\n', content[3:])
+    if not end_match:
+        return "remote"
+
+    frontmatter = content[3:end_match.start() + 3]
+
+    # Extract deployment field
+    match = re.search(r'^deployment:\s*(\w+)', frontmatter, re.MULTILINE)
+    if match:
+        return match.group(1).lower()
+
+    return "remote"
+
+
+def categorize_skills(skill_names: list[str]) -> dict[str, list[SkillInfo]]:
+    """Categorize skills by deployment type.
+
+    Returns dict with keys: local, remote, both
+    """
+    categories = {"local": [], "remote": [], "both": []}
+
+    for name in skill_names:
+        skill_dir = SKILLS_DIR / name
+        deployment = get_skill_deployment(skill_dir)
+        info = SkillInfo(name=name, deployment=deployment)
+        categories[deployment].append(info)
+
+    return categories
 
 
 def get_skills_hash() -> str:
@@ -170,16 +225,31 @@ def sync_if_changed(force: bool = False) -> bool:
         save_hash(current_hash)
         return False
 
+    # Categorize changed skills
+    categories = categorize_skills(changed_skills)
+    local_skills = [s.name for s in categories["local"]]
+    remote_skills = [s.name for s in categories["remote"]]
+    both_skills = [s.name for s in categories["both"]]
+
+    # Check if any skills need Modal deployment
+    needs_modal = bool(remote_skills or both_skills)
+
     print(f"\n{'='*60}")
     print(f"🔄 Skill changes detected at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"   Changed: {', '.join(changed_skills)}")
+    print(f"   📍 Local only: {', '.join(local_skills) if local_skills else 'none'}")
+    print(f"   ☁️  Remote:     {', '.join(remote_skills) if remote_skills else 'none'}")
+    print(f"   🔄 Both:       {', '.join(both_skills) if both_skills else 'none'}")
     print('='*60)
 
-    # Sync to GitHub
+    # Sync to GitHub (always)
     github_ok = sync_to_github(changed_skills)
 
-    # Deploy to Modal (even if GitHub failed, try Modal)
-    modal_ok = deploy_to_modal()
+    # Deploy to Modal only if remote/both skills changed
+    modal_ok = True
+    if needs_modal:
+        modal_ok = deploy_to_modal()
+    else:
+        print("⏭️  Skipping Modal deploy (only local skills changed)")
 
     if github_ok and modal_ok:
         save_hash(current_hash)
