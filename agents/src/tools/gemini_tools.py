@@ -1,4 +1,5 @@
 """Gemini skill tools for Modal agents."""
+import uuid
 from typing import Dict, Optional, Callable
 
 from src.services.gemini import get_gemini_client, ResearchReport
@@ -13,6 +14,7 @@ async def execute_deep_research(
     chat_id: int = 0,
     progress_callback: Callable[[str], None] = None,
     max_iterations: int = 10,
+    save_report: bool = True,
 ) -> Dict:
     """Execute deep research skill.
 
@@ -22,6 +24,7 @@ async def execute_deep_research(
         chat_id: Telegram chat ID for progress updates
         progress_callback: Optional callback for progress
         max_iterations: Max research iterations
+        save_report: Whether to save report to Firebase Storage
 
     Returns:
         Dict with report and metadata
@@ -42,7 +45,7 @@ async def execute_deep_research(
             if c.get('url')
         ])
 
-        return {
+        result = {
             "success": True,
             "report": report.sections[0]["content"],
             "summary": report.summary,
@@ -51,6 +54,31 @@ async def execute_deep_research(
             "duration_seconds": report.duration_seconds,
             "thinking_trace": report.thinking_trace,
         }
+
+        # Save report to Firebase Storage if user_id provided
+        if save_report and user_id:
+            try:
+                from src.services.firebase import save_report as fb_save_report
+                report_id = f"research-{uuid.uuid4().hex[:8]}"
+                url = await fb_save_report(
+                    user_id=user_id,
+                    report_id=report_id,
+                    content=report.sections[0]["content"],
+                    metadata={
+                        "title": f"Research: {query[:50]}",
+                        "query": query,
+                        "duration_seconds": str(report.duration_seconds),
+                        "query_count": str(report.query_count),
+                    }
+                )
+                result["report_id"] = report_id
+                result["download_url"] = url
+                logger.info("report_saved_to_storage", report_id=report_id, user_id=user_id)
+            except Exception as e:
+                logger.warning("report_save_failed", error=str(e)[:50])
+                # Continue without saving - don't fail the whole operation
+
+        return result
 
     except Exception as e:
         logger.error("deep_research_error", error=str(e)[:100])

@@ -7,13 +7,16 @@ Claude Agents SDK Pattern: ORCHESTRATOR-WORKERS
 """
 import asyncio
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Callable, Awaitable
 
 from src.utils.logging import get_logger
 from src.core.router import SkillRouter
 from src.skills.registry import Skill, get_registry
 
 logger = get_logger()
+
+# Type alias for progress callback
+ProgressCallback = Callable[[str], Awaitable[None]]
 
 
 @dataclass
@@ -71,22 +74,34 @@ class Orchestrator:
     async def execute(
         self,
         task: str,
-        context: Optional[Dict] = None
+        context: Optional[Dict] = None,
+        progress_callback: Optional[ProgressCallback] = None
     ) -> str:
         """Execute a complex task through orchestration.
 
         Args:
             task: Task description
             context: Additional context (project info, etc.)
+            progress_callback: Async function to report progress
 
         Returns:
             Synthesized final response
         """
         self.logger.info("orchestration_start", task=task[:100])
 
+        async def report(msg: str):
+            """Safe progress reporting with error handling."""
+            if progress_callback:
+                try:
+                    await progress_callback(msg)
+                except Exception as e:
+                    self.logger.warning("progress_callback_error", error=str(e)[:50])
+
         # Step 1: Decompose into subtasks
+        await report("📋 <i>Analyzing task...</i>")
         subtasks = await self.decompose(task, context)
         self.logger.info("decomposed", subtasks=len(subtasks))
+        await report(f"📋 <i>Planned {len(subtasks)} subtasks</i>")
 
         # Step 2: Validate and sanitize dependencies
         dependencies = {str(i): st.depends_on for i, st in enumerate(subtasks)}
@@ -113,11 +128,17 @@ class Orchestrator:
                 if matches:
                     subtask.skill_name = matches[0].skill_name
 
-        # Step 5: Execute workers (respecting dependencies)
-        results = await self._execute_with_dependencies(subtasks)
+        # Step 5: Execute workers with progress
+        results = await self._execute_with_dependencies(subtasks, report)
 
         # Step 6: Synthesize results
+        await report("✨ <i>Synthesizing results...</i>")
         final = await self.synthesize(task, results, context)
+
+        # Final stats
+        total_time = sum(r.duration_ms for r in results)
+        success_count = sum(1 for r in results if r.success)
+        await report(f"✅ <i>Complete ({success_count}/{len(results)} skills, {total_time}ms)</i>")
 
         self.logger.info("orchestration_complete", workers=len(results))
         return final
@@ -279,11 +300,18 @@ Return ONLY the JSON array, no other text."""
 
     async def _execute_with_dependencies(
         self,
-        subtasks: List[SubTask]
+        subtasks: List[SubTask],
+        report: Callable[[str], Awaitable[None]] = None
     ) -> List[WorkerResult]:
-        """Execute subtasks respecting dependencies."""
+        """Execute subtasks respecting dependencies with progress."""
         results: List[WorkerResult] = []
         completed = set()
+
+        async def noop_report(msg: str):
+            pass
+
+        if report is None:
+            report = noop_report
 
         while len(completed) < len(subtasks):
             # Find ready tasks (all dependencies completed)
@@ -299,6 +327,14 @@ Return ONLY the JSON array, no other text."""
 
             # Execute ready tasks in parallel (up to max_parallel)
             batch = ready[:self.max_parallel]
+
+            # Report starting skills
+            skill_names = [st.skill_name or "general" for _, st in batch]
+            if len(skill_names) == 1:
+                await report(f"🔧 <i>Using: {skill_names[0]}</i>")
+            else:
+                await report(f"🔧 <i>Using: {', '.join(skill_names)}</i>")
+
             batch_results = await asyncio.gather(*[
                 self._execute_worker(
                     subtask,
@@ -307,10 +343,18 @@ Return ONLY the JSON array, no other text."""
                 for i, subtask in batch
             ])
 
-            for (i, _), result in zip(batch, batch_results):
+            for (i, subtask), result in zip(batch, batch_results):
                 results.append(result)
                 subtasks[i].result = result.output
                 completed.add(i)
+
+                # Preview of result (first 100 chars)
+                preview = result.output[:100].replace('\n', ' ')
+                if len(result.output) > 100:
+                    preview += "..."
+
+                emoji = "📝" if result.success else "❌"
+                await report(f"{emoji} <i>{result.skill_name}: {preview}</i>")
 
         return results
 

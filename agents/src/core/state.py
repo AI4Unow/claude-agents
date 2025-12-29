@@ -3,6 +3,7 @@
 TTL Defaults:
 - Sessions: 1 hour
 - Conversations: 24 hours
+- User Tiers: 1 hour
 - Generic cache: 5 minutes
 
 Thread Safety:
@@ -11,6 +12,8 @@ Thread Safety:
 """
 import asyncio
 import threading
+import time
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -51,6 +54,7 @@ class StateManager:
     TTL_SESSION = 3600        # 1 hour
     TTL_CONVERSATION = 86400  # 24 hours
     TTL_CACHE = 300           # 5 minutes
+    TTL_USER_TIER = 3600      # 1 hour
 
     # Collection names
     COLLECTION_SESSIONS = "telegram_sessions"
@@ -61,6 +65,7 @@ class StateManager:
         self._l1_cache: Dict[str, CacheEntry] = {}
         self._db = None
         self._cleanup_task: Optional[asyncio.Task] = None
+        self._rate_counters: Dict[int, List[float]] = defaultdict(list)  # user_id -> timestamps
         self.logger = logger.bind(component="StateManager")
 
     def _get_db(self):
@@ -332,6 +337,74 @@ class StateManager:
             str(user_id),
             {"messages": [], "cleared_at": datetime.now(timezone.utc).isoformat()}
         )
+
+    # ==================== User Tier Methods ====================
+
+    async def get_user_tier_cached(self, user_id: int) -> str:
+        """Get user tier with L1 cache.
+
+        Checks ADMIN_TELEGRAM_ID env var first for admin auto-assignment.
+        """
+        import os
+
+        if not user_id:
+            return "guest"
+
+        # Check admin env var first
+        admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
+        if str(user_id) == str(admin_id):
+            return "admin"
+
+        key = self._cache_key("user_tiers", str(user_id))
+
+        # L1 hit
+        cached = self._get_from_l1(key)
+        if cached is not None:
+            return cached.get("tier", "guest")
+
+        # L2 fallback
+        from src.services.firebase import get_user_tier
+        tier = await get_user_tier(user_id)
+
+        # Cache the result
+        self._set_to_l1(key, {"tier": tier}, self.TTL_USER_TIER)
+        return tier
+
+    def check_rate_limit(self, user_id: int, tier: str) -> tuple:
+        """Check if user is within rate limit.
+
+        Returns:
+            (is_allowed: bool, seconds_until_reset: int)
+        """
+        from src.services.firebase import get_rate_limit
+
+        limit = get_rate_limit(tier)
+        now = time.time()
+        window_start = now - 60  # 1 minute window
+
+        # Clean old entries
+        self._rate_counters[user_id] = [
+            ts for ts in self._rate_counters[user_id]
+            if ts > window_start
+        ]
+
+        current_count = len(self._rate_counters[user_id])
+
+        if current_count >= limit:
+            oldest = min(self._rate_counters[user_id]) if self._rate_counters[user_id] else now
+            reset_in = int(oldest + 60 - now)
+            return False, max(1, reset_in)
+
+        # Record this request
+        self._rate_counters[user_id].append(now)
+        return True, 0
+
+    async def invalidate_user_tier(self, user_id: int):
+        """Invalidate cached tier after grant/revoke."""
+        key = self._cache_key("user_tiers", str(user_id))
+        with _cache_lock:
+            if key in self._l1_cache:
+                del self._l1_cache[key]
 
     # ==================== Cache Warming ====================
 

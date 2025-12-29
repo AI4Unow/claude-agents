@@ -6,12 +6,13 @@ II Framework Temporal Schema:
 - decisions/{id}: Learned rules with temporal validity
 - logs/{id}: Execution logs with observation refs
 - observations/{id}: Masked verbose outputs
+- user_tiers/{telegram_id}: User access tiers for Telegram parity
 """
 import json
 import os
 from datetime import datetime, timedelta
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Literal
 import firebase_admin
 from firebase_admin import credentials, firestore
 from google.cloud.firestore_v1 import FieldFilter
@@ -20,6 +21,19 @@ from src.utils.logging import get_logger
 from src.core.resilience import firebase_circuit, CircuitOpenError, CircuitState
 
 logger = get_logger()
+
+# ==================== Tier System ====================
+
+TierType = Literal["guest", "user", "developer", "admin"]
+TIER_HIERARCHY = {"guest": 0, "user": 1, "developer": 2, "admin": 3}
+
+# Rate limits per tier (requests per minute)
+TIER_RATE_LIMITS = {
+    "guest": 5,
+    "user": 20,
+    "developer": 50,
+    "admin": 1000  # effectively unlimited
+}
 
 # Initialize Firebase
 _app = None
@@ -997,4 +1011,293 @@ async def delete_reminder(reminder_id: str, user_id: int) -> bool:
         firebase_circuit._record_failure(e)
         logger.error("delete_reminder_error", error=str(e)[:100])
         return False
+
+
+# ==================== Reports Storage (Firebase Storage) ====================
+
+_bucket = None
+
+
+def get_storage_bucket():
+    """Get Firebase Storage bucket, initializing if needed."""
+    global _bucket
+    if _bucket is None:
+        from firebase_admin import storage
+        init_firebase()
+        bucket_name = os.environ.get("FIREBASE_STORAGE_BUCKET", "agents-d296a.firebasestorage.app")
+        _bucket = storage.bucket(bucket_name)
+    return _bucket
+
+
+async def save_report(
+    user_id: int,
+    report_id: str,
+    content: str,
+    metadata: Dict = None,
+) -> str:
+    """Save report to Firebase Storage.
+
+    Args:
+        user_id: User ID who generated the report
+        report_id: Unique report ID
+        content: Report content (markdown)
+        metadata: Optional metadata (title, query, duration, etc.)
+
+    Returns:
+        Signed download URL
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        logger.warning("firebase_circuit_open", operation="save_report")
+        raise CircuitOpenError("firebase", firebase_circuit._cooldown_remaining())
+
+    try:
+        bucket = get_storage_bucket()
+        blob_path = f"reports/{user_id}/{report_id}.md"
+        blob = bucket.blob(blob_path)
+
+        # Upload content
+        blob.upload_from_string(content, content_type="text/markdown")
+
+        # Generate signed URL (7 days)
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(days=7),
+            method="GET"
+        )
+
+        # Save metadata to Firestore for listing
+        db = get_db()
+        db.collection("reports").document(report_id).set({
+            "user_id": user_id,
+            "report_id": report_id,
+            "blob_path": blob_path,
+            "title": metadata.get("title", "Untitled Report") if metadata else "Untitled Report",
+            "query": metadata.get("query", "") if metadata else "",
+            "duration_seconds": metadata.get("duration_seconds", "0") if metadata else "0",
+            "query_count": metadata.get("query_count", "0") if metadata else "0",
+            "created_at": firestore.SERVER_TIMESTAMP,
+        })
+
+        firebase_circuit._record_success()
+        logger.info("report_saved", user_id=user_id, report_id=report_id)
+
+        return url
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("save_report_error", error=str(e)[:100])
+        raise
+
+
+async def list_user_reports(user_id: int, limit: int = 20) -> List[Dict]:
+    """List reports for a user.
+
+    Args:
+        user_id: User ID
+        limit: Max reports to return
+
+    Returns:
+        List of report metadata dicts
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        logger.warning("firebase_circuit_open", operation="list_user_reports")
+        return []
+
+    try:
+        db = get_db()
+        docs = (
+            db.collection("reports")
+            .where(filter=FieldFilter("user_id", "==", user_id))
+            .order_by("created_at", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+            .stream()
+        )
+
+        reports = []
+        for doc in docs:
+            data = doc.to_dict()
+            reports.append({
+                "report_id": data.get("report_id"),
+                "title": data.get("title"),
+                "query": data.get("query"),
+                "created_at": data.get("created_at"),
+            })
+
+        firebase_circuit._record_success()
+        return reports
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("list_user_reports_error", error=str(e)[:100])
+        return []
+
+
+async def get_report_url(user_id: int, report_id: str) -> Optional[str]:
+    """Get download URL for a report.
+
+    Args:
+        user_id: User ID (for auth check)
+        report_id: Report ID
+
+    Returns:
+        Signed download URL or None if not found/unauthorized
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        logger.warning("firebase_circuit_open", operation="get_report_url")
+        return None
+
+    try:
+        # Check ownership in Firestore
+        db = get_db()
+        doc = db.collection("reports").document(report_id).get()
+
+        if not doc.exists:
+            return None
+
+        data = doc.to_dict()
+        if data.get("user_id") != user_id:
+            logger.warning("report_access_denied", user_id=user_id, report_id=report_id)
+            return None
+
+        # Generate signed URL
+        bucket = get_storage_bucket()
+        blob = bucket.blob(data.get("blob_path"))
+
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(hours=1),
+            method="GET"
+        )
+
+        firebase_circuit._record_success()
+        return url
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("get_report_url_error", error=str(e)[:100])
+        return None
+
+
+async def get_report_content(user_id: int, report_id: str) -> Optional[str]:
+    """Get report content directly from Firebase Storage.
+
+    Args:
+        user_id: User ID (for auth check)
+        report_id: Report ID
+
+    Returns:
+        Report content or None if not found/unauthorized
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        logger.warning("firebase_circuit_open", operation="get_report_content")
+        return None
+
+    try:
+        # Check ownership in Firestore
+        db = get_db()
+        doc = db.collection("reports").document(report_id).get()
+
+        if not doc.exists:
+            return None
+
+        data = doc.to_dict()
+        if data.get("user_id") != user_id:
+            logger.warning("report_access_denied", user_id=user_id, report_id=report_id)
+            return None
+
+        # Download content from Storage
+        bucket = get_storage_bucket()
+        blob = bucket.blob(data.get("blob_path"))
+        content = blob.download_as_text()
+
+        firebase_circuit._record_success()
+        return content
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("get_report_content_error", error=str(e)[:100])
+        return None
+
+
+# ==================== User Tiers (Telegram Parity) ====================
+
+async def set_user_tier(telegram_id: int, tier: TierType, granted_by: int) -> bool:
+    """Add/update user tier in allowlist.
+
+    Args:
+        telegram_id: User's Telegram ID
+        tier: Access tier to grant
+        granted_by: Admin Telegram ID
+
+    Returns:
+        True if successful
+    """
+    if firebase_circuit.state == CircuitState.OPEN:
+        return False
+
+    try:
+        db = get_db()
+        db.collection("user_tiers").document(str(telegram_id)).set({
+            "tier": tier,
+            "granted_by": granted_by,
+            "granted_at": firestore.SERVER_TIMESTAMP,
+            "last_active": firestore.SERVER_TIMESTAMP
+        })
+
+        firebase_circuit._record_success()
+        logger.info("user_tier_set", tier=tier, user=telegram_id, by=granted_by)
+        return True
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("set_user_tier_error", error=str(e)[:100])
+        return False
+
+
+async def get_user_tier(telegram_id: int) -> TierType:
+    """Get user's tier. Returns 'guest' if not in allowlist."""
+    if firebase_circuit.state == CircuitState.OPEN:
+        return "guest"
+
+    try:
+        db = get_db()
+        doc = db.collection("user_tiers").document(str(telegram_id)).get()
+
+        if doc.exists:
+            firebase_circuit._record_success()
+            return doc.to_dict().get("tier", "guest")
+
+        firebase_circuit._record_success()
+        return "guest"
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        return "guest"
+
+
+async def remove_user_tier(telegram_id: int) -> bool:
+    """Remove user from allowlist (revoke access)."""
+    if firebase_circuit.state == CircuitState.OPEN:
+        return False
+
+    try:
+        db = get_db()
+        db.collection("user_tiers").document(str(telegram_id)).delete()
+        firebase_circuit._record_success()
+        logger.info("user_tier_removed", user=telegram_id)
+        return True
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        return False
+
+
+def has_permission(user_tier: TierType, required_tier: TierType) -> bool:
+    """Check if user tier meets required tier."""
+    return TIER_HIERARCHY.get(user_tier, 0) >= TIER_HIERARCHY.get(required_tier, 0)
+
+
+def get_rate_limit(tier: TierType) -> int:
+    """Get rate limit (req/min) for tier."""
+    return TIER_RATE_LIMITS.get(tier, 5)
 

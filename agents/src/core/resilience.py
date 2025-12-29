@@ -249,6 +249,32 @@ def reset_all_circuits():
     gemini_circuit.reset()
 
 
+def reset_circuit(name: str) -> bool:
+    """Reset a specific circuit by name.
+
+    Args:
+        name: Circuit name (e.g., "exa_api", "claude_api")
+
+    Returns:
+        True if reset successful, False if circuit not found
+    """
+    circuits = {
+        "exa_api": exa_circuit,
+        "tavily_api": tavily_circuit,
+        "firebase": firebase_circuit,
+        "qdrant": qdrant_circuit,
+        "claude_api": claude_circuit,
+        "telegram_api": telegram_circuit,
+        "gemini_api": gemini_circuit,
+    }
+
+    circuit = circuits.get(name)
+    if circuit:
+        circuit.reset()
+        return True
+    return False
+
+
 def with_retry(
     max_attempts: int = 3,
     delay: float = 1.0,

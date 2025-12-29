@@ -8,7 +8,7 @@ Deploy self-improving AI agents on Modal.com using the **II Framework (Informati
 
 **Phase:** Production MVP
 **Deploy URL:** https://duc-a-nguyen--claude-agents-telegramchatagent-app.modal.run
-**Last Updated:** Dec 28, 2025
+**Last Updated:** Dec 29, 2025
 
 ## Goals
 
@@ -17,6 +17,7 @@ Deploy self-improving AI agents on Modal.com using the **II Framework (Informati
 3. **Low Latency** - <2s response for Telegram chat
 4. **Scalable** - Pay-per-use serverless architecture
 5. **Tool-Enabled** - Agents can use web search, code execution, memory search
+6. **Multi-Model** - Claude + Gemini API integration
 
 ## User Stories
 
@@ -27,6 +28,8 @@ Deploy self-improving AI agents on Modal.com using the **II Framework (Informati
 | Content Creator | Generate reports/content | Save time on writing | Done |
 | Data Analyst | Schedule data processing | Automate recurring analysis | Done |
 | Developer | Execute skills via API | Integrate with other systems | Done |
+| Researcher | Run deep research | Get comprehensive reports with citations | Done |
+| Admin | Manage user tiers | Control access to features | Done |
 
 ## Success Criteria
 
@@ -38,9 +41,12 @@ Deploy self-improving AI agents on Modal.com using the **II Framework (Informati
 - [x] Vector memory setup in Qdrant
 - [x] Tool system with web search, code exec, etc.
 - [x] Skill API with multiple execution modes
-- [x] Circuit breakers for 6 external services
+- [x] Circuit breakers for 7 external services
 - [x] Execution tracing with tool-level timing
 - [x] Self-improvement with Telegram admin approval
+- [x] Gemini API integration (research, grounding, vision, thinking)
+- [x] Firebase Storage for research reports
+- [x] User tier system (guest, user, developer, admin)
 - [ ] Monthly cost <$60 (monitoring)
 
 ## Implemented Features
@@ -56,9 +62,10 @@ Deploy self-improving AI agents on Modal.com using the **II Framework (Informati
 - **Thread-safe** - Double-check locking for singleton and cache operations
 - **Conversation persistence** - Last 20 messages per user (24hr TTL)
 - **Cache warming** - @enter hook preloads skills and sessions on container start
+- **User tiers** - guest, user, developer, admin with rate limits
 
 ### Reliability & Observability
-- **Circuit Breakers** - 6 circuits (Exa, Tavily, Firebase, Qdrant, Claude, Telegram)
+- **Circuit Breakers** - 7 circuits (Exa, Tavily, Firebase, Qdrant, Claude, Telegram, Gemini)
 - **Execution Tracing** - TraceContext with tool-level timing and error tracking
 - **Self-Improvement** - LLM-based error reflection with Telegram admin approval
 - **Retry Logic** - Exponential backoff with configurable thresholds
@@ -70,12 +77,17 @@ Deploy self-improving AI agents on Modal.com using the **II Framework (Informati
 - `read_webpage` - URL content fetching
 - `search_memory` - Qdrant vector search
 
+### Gemini Skills
+- `gemini-deep-research` - Multi-step agentic research with citations
+- `gemini-grounding` - Real-time factual queries via Google Search
+- `gemini-thinking` - Configurable reasoning depth (minimal/low/medium/high)
+- `gemini-vision` - Image and document analysis
+
 ### Skill Execution Modes
 - **Simple** - Direct skill execution
 - **Routed** - Semantic routing to best skill
+- **Auto** - Smart detection (simple vs complex)
 - **Orchestrated** - Multi-skill complex tasks
-- **Chained** - Sequential skill pipeline
-- **Evaluated** - Quality assessment included
 
 ### API Endpoints
 - `/health` - Health check with circuit status
@@ -83,9 +95,20 @@ Deploy self-improving AI agents on Modal.com using the **II Framework (Informati
 - `/webhook/github` - GitHub webhook
 - `/api/skill` - Skill execution API
 - `/api/skills` - List available skills
+- `/api/task/{id}` - Local task status
+- `/api/reports` - List user reports
+- `/api/reports/{id}` - Report download URL
+- `/api/reports/{id}/content` - Report content
 - `/api/content` - Content generation API
-- `/api/traces` - Execution traces (admin)
-- `/api/circuits` - Circuit breaker status (admin)
+- `/api/traces` - Execution traces (developer+)
+- `/api/circuits` - Circuit breaker status (developer+)
+
+### Telegram Commands
+- Basic: /start, /help, /status, /tier, /clear
+- Skills: /skills, /skill, /mode, /task, /cancel
+- Quick: /translate, /summarize, /rewrite
+- Developer: /traces, /trace, /circuits
+- Admin: /grant, /revoke, /admin, /remind, /reminders
 
 ## The II Framework
 
@@ -119,14 +142,17 @@ MUTABLE at runtime             IMMUTABLE after deploy
 | 10 | State Management (L1/L2 caching) | Done |
 | 11 | Reliability & Tracing | Done |
 | 12 | Self-Improvement Loop | Done |
+| 13 | Gemini Integration & Reports | Done |
+| 14 | User Tier System | Done |
 
 ## Dependencies
 
 - Modal.com account (deployed)
-- Firebase project (free tier)
+- Firebase project (Firestore + Storage)
 - Qdrant Cloud (configured)
 - Telegram Bot (configured)
 - Anthropic API key (configured)
+- Google Cloud Platform (Vertex AI)
 - Exa API key (configured)
 - Tavily API key (configured)
 - GitHub token (configured)

@@ -4,14 +4,17 @@
 
 **Phase:** Production MVP
 **Deploy URL:** https://duc-a-nguyen--claude-agents-telegramchatagent-app.modal.run
-**Last Updated:** Dec 28, 2025
+**Last Updated:** Dec 29, 2025
 
 Fully deployed II Framework agents on Modal.com with:
-- 6 circuit breakers (exa, tavily, firebase, qdrant, claude, telegram)
+- 7 circuit breakers (exa, tavily, firebase, qdrant, claude, telegram, gemini)
 - Execution tracing with tool-level timing
 - Self-improvement loop with Telegram admin approval
-- Skill categorization (local vs remote deployment)
+- 55 skills (local, remote, hybrid deployment)
 - State management with L1/L2 caching
+- Gemini API integration for research, grounding, vision, thinking
+- Firebase Storage for research reports
+- User tier system (guest, user, developer, admin)
 
 ## Repository Structure
 
@@ -20,6 +23,7 @@ Fully deployed II Framework agents on Modal.com with:
 ├── CLAUDE.md                      # Claude Code project instructions
 ├── README.md                      # Project readme
 ├── firebase.json                  # Firebase hosting config
+├── firestore.indexes.json         # Firestore composite indexes
 ├── docs/                          # Documentation
 │   ├── project-overview-pdr.md
 │   ├── system-architecture.md
@@ -28,40 +32,33 @@ Fully deployed II Framework agents on Modal.com with:
 │   ├── project-roadmap.md
 │   └── deployment-guide.md
 ├── plans/                         # Implementation plans
-│   ├── 251226-1500-modal-claude-agents/
-│   ├── 251227-0629-agent-reliability-improvements/
-│   ├── 251227-1234-smart-chatbot-tools/
-│   ├── 251227-1308-additional-bot-tools/
-│   ├── 251227-1355-skills-deployment-audit/
-│   ├── 251227-1528-unified-ii-framework/
-│   └── reports/
 └── agents/                        # Main codebase
-    ├── main.py                    # Modal app entry point (782 lines)
+    ├── main.py                    # Modal app entry point (~2500 lines)
     ├── modal.toml                 # Modal configuration
     ├── requirements.txt           # Python dependencies
     ├── src/
-    │   ├── config.py              # Environment configuration
     │   ├── agents/                # Agent implementations
     │   ├── services/              # External service integrations
     │   ├── tools/                 # Tool system
     │   ├── core/                  # II Framework core components
     │   ├── skills/                # Skill registry
     │   └── utils/                 # Utilities (logging)
-    ├── skills/                    # 25+ skill info.md files
+    ├── skills/                    # 55 skill info.md files
     ├── scripts/                   # Utility scripts
     └── tests/                     # Test files
 ```
 
 ## Key Components
 
-### Entry Point (main.py - 1107 lines)
+### Entry Point (main.py)
 
 The main Modal app defining:
 - FastAPI web application with webhook handlers
 - TelegramChatAgent class with @enter hook for cache warming
 - 4 specialized agents (Telegram, GitHub, Data, Content)
-- Skill API with 5 execution modes
-- Skill terminal commands (/skill, /run, /mode)
+- Skill API with execution modes (simple, routed, orchestrated)
+- User tier system with permission-based commands
+- Reports API for Firebase Storage access
 - Cron jobs for scheduled tasks
 
 ### Agents (src/agents/)
@@ -75,19 +72,22 @@ The main Modal app defining:
 
 ### Services (src/services/)
 
-| File | Purpose |
-|------|---------|
-| `agentic.py` | Agentic loop with tool execution + conversation persistence |
-| `llm.py` | Claude API client (Anthropic via ai4u.now proxy) |
-| `firebase.py` | Firebase Firestore client (507 lines) |
-| `qdrant.py` | Qdrant vector database client (617 lines) |
-| `embeddings.py` | Embedding generation |
-| `telegram.py` | Telegram message utilities |
+| File | Lines | Purpose |
+|------|-------|---------|
+| `firebase.py` | ~1200 | Firestore + Storage (state, tiers, tasks, reports, reminders) |
+| `gemini.py` | 441 | GeminiClient with Vertex AI SDK (chat, research, grounding, vision) |
+| `llm.py` | 200 | Claude API client (Anthropic via ai4u.now proxy) |
+| `agentic.py` | 260 | Agentic loop with tool execution + conversation persistence |
+| `qdrant.py` | 617 | Qdrant vector database client |
+| `telegram.py` | 400 | Telegram message utilities + formatters |
+| `embeddings.py` | 80 | Embedding generation |
+| `media.py` | 127 | Media processing utilities |
 
 ### Tools (src/tools/)
 
 | File | Tool | Purpose |
 |------|------|---------|
+| `gemini_tools.py` | Gemini skills | Deep research, grounding, thinking, vision handlers |
 | `web_search.py` | `web_search` | Web search via Exa + Tavily fallback |
 | `datetime_tool.py` | `get_datetime` | Timezone-aware date/time |
 | `code_exec.py` | `run_python` | Python code execution |
@@ -100,21 +100,22 @@ The main Modal app defining:
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `state.py` | 372 | Unified StateManager with L1 TTL cache + L2 Firebase |
-| `resilience.py` | 270 | Circuit breakers (6 services) + retry decorator |
+| `state.py` | 500+ | StateManager with L1 TTL cache + L2 Firebase, user tiers |
+| `resilience.py` | 350 | Circuit breakers (7 services) + retry decorator |
 | `trace.py` | 200 | Execution tracing with TraceContext, ToolTrace |
-| `improvement.py` | 380 | Self-improvement service with Telegram approval |
-| `orchestrator.py` | 300 | Multi-skill task orchestration |
+| `improvement.py` | 500 | Self-improvement service with Telegram approval |
+| `orchestrator.py` | 500 | Multi-skill task orchestration with progress |
+| `complexity.py` | 130 | Task complexity classification |
 | `evaluator.py` | 287 | Quality evaluation and optimization |
 | `context_optimization.py` | 283 | Context compaction and optimization |
 | `chain.py` | 243 | Sequential skill pipeline execution |
 | `router.py` | 160 | Semantic skill routing via Qdrant |
 
-#### New Components
+#### Key Components
 
 **Resilience (resilience.py)**
 - CircuitBreaker class with states: CLOSED, OPEN, HALF_OPEN
-- Pre-configured circuits: exa, tavily, firebase, qdrant, claude, telegram
+- Pre-configured circuits: exa, tavily, firebase, qdrant, claude, telegram, gemini
 - with_retry decorator for exponential backoff
 - get_circuit_stats() for monitoring
 
@@ -131,66 +132,34 @@ The main Modal app defining:
 - LLM-based error reflection
 - Telegram notifications with approve/reject buttons
 
-### Skill Registry (src/skills/)
-
-| File | Purpose |
-|------|---------|
-| `registry.py` | Progressive disclosure skill loading |
-
-Key classes:
-- `SkillSummary` - Minimal skill info (Layer 1)
-- `Skill` - Full skill content (Layer 2)
-- `SkillRegistry` - Discovery, loading, memory update
+**State Manager (state.py)**
+- User tier caching with TTL
+- Rate limiting per tier
+- Session management
+- Pending skill tracking
+- User mode preferences (simple, routed, auto)
 
 ### Skills (agents/skills/)
 
-24 skills organized by category with deployment type:
+55 skills organized by category with deployment type:
 
 **Local Only (8):** Require local execution
-- `canvas-design/` - Canvas design
-- `docx/` - Word documents (with scripts/)
-- `image-enhancer/` - Image enhancement
-- `media-processing/` - Media conversion (with scripts/)
-- `pdf/` - PDF processing (with scripts/)
-- `pptx/` - PowerPoint (with scripts/)
-- `video-downloader/` - Video downloading
-- `xlsx/` - Excel spreadsheets
+- `canvas-design/`, `docx/`, `xlsx/`, `pptx/`, `pdf/`
+- `image-enhancer/`, `media-processing/`, `video-downloader/`
 
-**Remote (16):** Deployed to Modal
+**Remote (40+):** Deployed to Modal
 - Agent: `telegram-chat/`, `github/`, `data/`, `content/`
-- Development: `planning/`, `debugging/`, `code-review/`, `research/`, `backend-development/`, `frontend-development/`, `mobile-development/`
-- Design: `ui-ux-pro-max/` (with scripts/), `ui-styling/` (with scripts/)
-- AI: `ai-multimodal/` (with scripts/), `ai-artist/`
+- Development: `planning/`, `debugging/`, `code-review/`, `research/`
+- Backend: `backend-development/`, `databases/`, `devops/`
+- Frontend: `frontend-development/`, `frontend-design/`, `frontend-design-pro/`
+- Mobile: `mobile-development/`
+- Design: `ui-ux-pro-max/`, `ui-styling/`
+- AI: `ai-multimodal/`, `ai-artist/`
+- Gemini: `gemini-deep-research/`, `gemini-grounding/`, `gemini-thinking/`, `gemini-vision/`
 
-## Technology Stack
-
-| Layer | Technology | Version |
-|-------|------------|---------|
-| Runtime | Modal.com (Python 3.11) | modal>=0.60.0 |
-| Web Framework | FastAPI | >=0.109.0 |
-| AI | Anthropic Claude | anthropic>=0.40.0 |
-| Vector DB | Qdrant Cloud | qdrant-client>=1.7.0 |
-| State Store | Firebase Firestore | firebase-admin>=6.4.0 |
-| Chat Platform | Telegram | python-telegram-bot>=21.0 |
-| GitHub | PyGithub | >=2.1.0 |
-| Web Search | Exa + Tavily | exa-py>=1.0.0, tavily-python>=0.3.0 |
-| Document Processing | python-docx, openpyxl, python-pptx, pypdf | Various |
-| Logging | structlog | >=24.1.0 |
-
-## Development Workflow
-
-1. **Local Development**
-   - Edit code in `agents/` directory
-   - Test with `modal serve agents/main.py`
-
-2. **Deployment**
-   - `modal deploy agents/main.py`
-   - Skills sync to Modal Volume
-
-3. **Monitoring**
-   - `modal app logs claude-agents`
-   - Firebase console for state
-   - Qdrant dashboard for vectors
+**Hybrid (7):** Both local and remote
+- `better-auth/`, `chrome-devtools/`, `mcp-builder/`, `repomix/`
+- `sequential-thinking/`, `web-frameworks/`, `webapp-testing/`
 
 ## API Endpoints
 
@@ -199,26 +168,58 @@ Key classes:
 | `/health` | GET | Health check with circuit breaker status |
 | `/webhook/telegram` | POST | Telegram bot webhook |
 | `/webhook/github` | POST | GitHub event webhook |
-| `/api/skill` | POST | Execute skill (5 modes) |
+| `/api/skill` | POST | Execute skill (simple/routed/orchestrated) |
 | `/api/skills` | GET | List available skills |
+| `/api/task/{id}` | GET | Get local task status |
+| `/api/reports` | GET | List user research reports |
+| `/api/reports/{id}` | GET | Get report download URL |
+| `/api/reports/{id}/content` | GET | Get report content |
 | `/api/content` | POST | Content generation |
-| `/api/traces` | GET | List execution traces (admin) |
-| `/api/traces/{id}` | GET | Get single trace (admin) |
-| `/api/circuits` | GET | Get circuit breaker status (admin) |
+| `/api/traces` | GET | List execution traces (developer+) |
+| `/api/traces/{id}` | GET | Get single trace (developer+) |
+| `/api/circuits` | GET | Get circuit breaker status (developer+) |
 | `/api/circuits/reset` | POST | Reset all circuits (admin) |
 
 ## Telegram Bot Commands
 
-- `/start` - Welcome message
-- `/help` - Show commands
-- `/status` - Agent status
-- `/clear` - Clear conversation history
-- `/skill <name>` - Execute skill
-- `/run <name>` - Run skill directly
-- `/mode <simple|agentic>` - Switch execution mode
-- `/translate <text>` - Translate to English
-- `/summarize <text>` - Summarize text
-- `/rewrite <text>` - Improve text
+| Command | Tier | Description |
+|---------|------|-------------|
+| `/start` | All | Welcome message |
+| `/help` | All | Show commands (tier-aware) |
+| `/status` | All | Agent and tier status |
+| `/tier` | All | Check tier and rate limit |
+| `/clear` | All | Clear conversation history |
+| `/skills` | All | Browse skills (inline menu) |
+| `/skill <name> <task>` | All | Execute skill |
+| `/mode <simple\|routed\|auto>` | All | Set execution mode |
+| `/translate <text>` | All | Translate to English |
+| `/summarize <text>` | All | Summarize text |
+| `/rewrite <text>` | All | Improve text |
+| `/task <id>` | User+ | Check local task status |
+| `/traces [limit]` | Developer+ | Recent execution traces |
+| `/trace <id>` | Developer+ | Trace details |
+| `/circuits` | Developer+ | Circuit breaker status |
+| `/grant <id> <tier>` | Admin | Grant user tier |
+| `/revoke <id>` | Admin | Revoke user access |
+| `/admin reset <circuit>` | Admin | Reset circuit breaker |
+| `/remind <time> <msg>` | Admin | Set reminder |
+| `/reminders` | Admin | List reminders |
+
+## Technology Stack
+
+| Layer | Technology | Version |
+|-------|------------|---------|
+| Runtime | Modal.com (Python 3.11) | modal>=0.60.0 |
+| Web Framework | FastAPI | >=0.109.0 |
+| AI | Anthropic Claude | anthropic>=0.40.0 |
+| AI | Google Gemini | google-genai>=1.0.0 |
+| Vector DB | Qdrant Cloud | qdrant-client>=1.7.0 |
+| State Store | Firebase Firestore + Storage | firebase-admin>=6.4.0 |
+| Chat Platform | Telegram | python-telegram-bot>=21.0 |
+| GitHub | PyGithub | >=2.1.0 |
+| Web Search | Exa + Tavily | exa-py>=1.0.0, tavily-python>=0.3.0 |
+| Document Processing | python-docx, openpyxl, python-pptx, pypdf | Various |
+| Logging | structlog | >=24.1.0 |
 
 ## Related Documents
 

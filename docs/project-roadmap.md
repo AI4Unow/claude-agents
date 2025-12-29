@@ -64,13 +64,25 @@ The II Framework agents are deployed and operational on Modal.com with full reli
 - [x] Skill categorization (local/remote deployment)
 - [x] Sync filter for Modal deployment
 
+### Phase 9: Gemini Integration & Reports (Dec 29, 2025)
+- [x] Gemini API client with Vertex AI SDK
+- [x] 4 Gemini skills (deep-research, grounding, thinking, vision)
+- [x] Firebase Storage for research reports
+- [x] Reports API (list, download URL, content)
+- [x] 7th circuit breaker (gemini_circuit)
+- [x] User tier system (guest, user, developer, admin)
+- [x] Permission-based commands
+- [x] Execution modes (simple, routed, auto)
+- [x] Task complexity classification
+- [x] 55 skills (expanded from 24)
+
 ## Next Priorities
 
 ### Near-Term (1-2 weeks)
 
 1. **Production Testing**
-   - Test self-improvement loop in production
-   - Validate circuit breaker behavior under load
+   - Test Gemini skills in production
+   - Validate report storage and retrieval
    - Monitor trace data for optimization
 
 2. **Skill Enhancements**
@@ -79,7 +91,7 @@ The II Framework agents are deployed and operational on Modal.com with full reli
    - Skill quality scoring
 
 3. **Local Agent Integration**
-   - Implement local skill execution (TikTok, Facebook, etc.)
+   - Test local skill execution (TikTok, Facebook, etc.)
    - Claude Code + Modal coordination via Firebase queue
    - Browser automation with chrome-dev skills
 
@@ -125,6 +137,7 @@ The II Framework agents are deployed and operational on Modal.com with full reli
 | Error handling standardization | Medium | Consistent error types |
 | Documentation for scripts | Medium | pdf/, docx/ skill scripts |
 | Type hints completion | Low | Some services missing |
+| Modularize main.py | Medium | ~2500 lines, needs splitting |
 
 ## Open Questions
 
@@ -139,17 +152,14 @@ Implementation plans in `plans/` directory:
 
 | Plan | Status | Description |
 |------|--------|-------------|
-| `251228-0935-hybrid-agent-architecture/` | ✅ Completed | Hybrid local + Modal architecture (docs) |
+| `251229-0613-gemini-skills/` | ✅ Completed | Gemini API skills implementation |
+| `251228-1351-skills-sync-categorization/` | ✅ Completed | Skills sync and categorization |
+| `251228-0935-hybrid-agent-architecture/` | ✅ Completed | Hybrid local + Modal architecture |
 | `251228-0736-agents-enhancement/` | ✅ Completed | Skill categorization + self-improvement |
 | `251228-0622-agentex-p0-tracing-resilience/` | ✅ Completed | Circuit breakers + execution tracing |
 | `251228-0523-improve-state-management/` | ✅ Completed | StateManager implementation |
 | `251227-2251-telegram-skills-terminal/` | ✅ Completed | Telegram bot as skills terminal |
 | `251227-1528-unified-ii-framework/` | ✅ Completed | Unified architecture |
-| `251227-1355-skills-deployment-audit/` | ✅ Completed | Skills deployment |
-| `251227-1308-additional-bot-tools/` | ✅ Completed | Additional tools |
-| `251227-1234-smart-chatbot-tools/` | ✅ Completed | Tool system |
-| `251227-0629-agent-reliability-improvements/` | ⏭️ Superseded | By AgentEx P0 |
-| `251226-1500-modal-claude-agents/` | ⏭️ Superseded | Initial design |
 
 ## Success Metrics
 
@@ -160,3 +170,4 @@ Implementation plans in `plans/` directory:
 | Skill routing accuracy | >85% | Needs measurement |
 | Monthly cost | <$60 | ~$40-50 |
 | Uptime | >99% | Monitoring |
+| Gemini research duration | <60s | ~25-35s |

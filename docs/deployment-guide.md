@@ -83,11 +83,19 @@ modal secret create github-credentials \
   GITHUB_TOKEN=ghp_...
 ```
 
-### Admin Credentials (Self-Improvement)
+### Admin Credentials (Self-Improvement + User Tiers)
 ```bash
 modal secret create admin-credentials \
   ADMIN_TELEGRAM_ID=your-telegram-id \
   ADMIN_API_TOKEN=your-secure-token
+```
+
+### GCP Credentials (Gemini API)
+```bash
+modal secret create gcp-credentials \
+  GCP_PROJECT_ID=your-gcp-project \
+  GCP_LOCATION=us-central1 \
+  GOOGLE_APPLICATION_CREDENTIALS_JSON='{"type":"service_account",...}'
 ```
 
 ## Deployment Commands
@@ -162,14 +170,27 @@ modal run agents/main.py::test_embeddings
 
 # Test GitHub
 modal run agents/main.py::test_github
+
+# Test Gemini API
+modal run agents/main.py::test_gemini
+
+# Test Gemini grounding
+modal run agents/main.py::test_grounding
+
+# Test deep research (takes ~30s)
+modal run agents/main.py::test_deep_research
 ```
 
 ## Initialize Skills
 
-First-time setup to create skill info.md files:
+First-time setup to sync skills to Modal Volume:
 
 ```bash
-modal run agents/main.py::init_skills
+# Sync from local
+modal run agents/main.py::sync_skills_from_local
+
+# Or sync from GitHub
+modal run agents/main.py::sync_skills_from_github
 ```
 
 ## API Endpoints
@@ -183,13 +204,17 @@ After deployment, these endpoints are available:
 | `/webhook/github` | POST | GitHub webhook |
 | `/api/skill` | POST | Execute skill |
 | `/api/skills` | GET | List skills |
+| `/api/task/{id}` | GET | Get local task status |
+| `/api/reports` | GET | List user reports |
+| `/api/reports/{id}` | GET | Get report download URL |
+| `/api/reports/{id}/content` | GET | Get report content |
 | `/api/content` | POST | Content generation |
-| `/api/traces` | GET | Execution traces (admin) |
+| `/api/traces` | GET | Execution traces (developer+) |
 | `/api/traces/{id}` | GET | Single trace details |
 | `/api/circuits` | GET | Circuit breaker status |
 | `/api/circuits/reset` | POST | Reset all circuits |
 
-### Skill API Examples
+### API Examples
 
 ```bash
 # Execute skill (simple mode)
@@ -201,13 +226,11 @@ curl -X POST https://<modal-url>/api/skill \
     "mode": "simple"
   }'
 
-# Routed execution (auto-select skill)
-curl -X POST https://<modal-url>/api/skill \
-  -H "Content-Type: application/json" \
-  -d '{
-    "task": "Debug this authentication error",
-    "mode": "routed"
-  }'
+# List user reports
+curl "https://<modal-url>/api/reports?user_id=123456"
+
+# Get report download URL
+curl "https://<modal-url>/api/reports/research-abc123?user_id=123456"
 
 # List available skills
 curl https://<modal-url>/api/skills
@@ -217,6 +240,45 @@ curl https://<modal-url>/api/circuits
 
 # View execution traces
 curl https://<modal-url>/api/traces?limit=10
+```
+
+## Local Skill Execution
+
+For skills that require local execution (browser automation, consumer IP):
+
+```bash
+# One-time execution
+python3 agents/scripts/local-executor.py
+
+# Continuous polling (30s interval)
+python3 agents/scripts/local-executor.py --poll
+
+# Custom interval
+python3 agents/scripts/local-executor.py --poll --interval 60
+
+# Execute specific task
+python3 agents/scripts/local-executor.py --task <task_id>
+```
+
+## Self-Improvement
+
+Pull and apply approved improvements:
+
+```bash
+# List pending improvements
+python3 agents/scripts/pull-improvements.py --list
+
+# Preview changes
+python3 agents/scripts/pull-improvements.py --dry-run
+
+# Apply all approved improvements
+python3 agents/scripts/pull-improvements.py
+
+# After applying, deploy changes
+git add agents/skills/
+git commit -m "chore: apply skill improvements"
+git push
+modal deploy agents/main.py
 ```
 
 ## Monitoring
@@ -234,7 +296,7 @@ curl https://<modal-url>/health
 
 # Response includes:
 # - status: healthy/degraded
-# - circuits: state of all 6 circuit breakers
+# - circuits: state of all 7 circuit breakers
 # - timestamp
 ```
 
@@ -242,6 +304,7 @@ curl https://<modal-url>/health
 - View Firestore collections
 - Check task queue status
 - Monitor agent state
+- View reports in Storage
 
 ### Qdrant Dashboard
 - View collections
@@ -272,6 +335,18 @@ For Telegram chat agent, `min_containers=1` keeps it warm. For other functions, 
 - Verify webhook URL is correct
 - Test with `/health` endpoint first
 
+**5. Gemini API errors**
+```
+Error: Vertex AI API not enabled
+```
+Solution: Enable Vertex AI API in GCP Console and ensure billing is enabled
+
+**6. Firebase Storage 404**
+```
+Error: 404 bucket not found
+```
+Solution: Enable Firebase Storage in Firebase Console
+
 ### Debug Mode
 
 Run with verbose logging:
@@ -295,6 +370,10 @@ structlog.configure(
    - Use shorter prompts when possible
    - Cache common responses
 
+4. **Gemini API**: Vertex AI pricing
+   - Use API key mode for free tier (limited)
+   - Use Vertex AI for production
+
 ## Updating Deployment
 
 ```bash
@@ -305,7 +384,7 @@ git pull
 modal deploy agents/main.py
 
 # Sync skills (if skills changed)
-modal run agents/main.py::sync_skills_from_github
+modal run agents/main.py::sync_skills_from_local
 ```
 
 ## Related Documents
