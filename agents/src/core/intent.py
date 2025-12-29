@@ -118,7 +118,7 @@ def classify_intent_sync(message: str) -> IntentType:
 
         # Use Haiku for fast classification
         response = client.client.messages.create(
-            model="claude-4-5-haiku-latest",
+            model="kiro-claude-haiku-4-5",
             max_tokens=10,
             messages=[{"role": "user", "content": prompt}]
         )

@@ -116,7 +116,7 @@ class LLMClient:
 
         try:
             response = self.client.messages.create(
-                model="claude-sonnet-4-20250514",  # Use Sonnet for vision
+                model="kiro-claude-opus-4-5-agentic",  # Use Opus for vision
                 max_tokens=max_tokens,
                 messages=[{
                     "role": "user",
@@ -137,7 +137,7 @@ class LLMClient:
                 }]
             )
             claude_circuit._record_success()
-            logger.info("vision_success", model="claude-sonnet-4")
+            logger.info("vision_success", model="kiro-claude-opus-4-5-agentic")
             return response.content[0].text
 
         except Exception as e:

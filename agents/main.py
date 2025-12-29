@@ -1585,13 +1585,13 @@ async def process_message(
                         # No skill matched, fall back to chat
                         response = await _run_simple(
                             text, user, chat_id, progress_msg_id, update_progress,
-                            model="claude-4-5-haiku-latest"
+                            model="kiro-claude-haiku-4-5"
                         )
                 else:
                     # CHAT intent - use Haiku for fast, cheap responses
                     response = await _run_simple(
                         text, user, chat_id, progress_msg_id, update_progress,
-                        model="claude-4-5-haiku-latest"
+                        model="kiro-claude-haiku-4-5"
                     )
 
         elif mode == "routed":
@@ -1602,7 +1602,7 @@ async def process_message(
             # Default: simple mode - use Haiku for fast, cheap responses
             response = await _run_simple(
                 text, user, chat_id, progress_msg_id, update_progress,
-                model="claude-4-5-haiku-latest"
+                model="kiro-claude-haiku-4-5"
             )
 
         # Success reaction
