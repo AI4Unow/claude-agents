@@ -16,6 +16,7 @@ image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("git", "curl")
     .pip_install_from_requirements("requirements.txt")
+    .env({"PYTHONPATH": "/root"})
     .add_local_dir("src", remote_path="/root/src")
     .add_local_dir("skills", remote_path="/root/skills_source")  # For deploy-time sync
 )
@@ -2095,75 +2096,76 @@ def main(sync: bool = False):
     print("\nDeploy URL: https://duc-a-nguyen--claude-agents-telegram-chat-agent.modal.run")
 
 
+@app.function(image=image, secrets=secrets)
+async def _test_gemini_remote():
+    """Run Gemini test on Modal."""
+    from src.services.gemini import get_gemini_client
+
+    client = get_gemini_client()
+    result = await client.chat(
+        messages=[{"role": "user", "content": "Hello, test message. Reply briefly."}],
+    )
+    return {
+        "project": client.project_id,
+        "location": client.location,
+        "response": result[:500] if result else "No response"
+    }
+
+
+@app.function(image=image, secrets=secrets)
+async def _test_grounding_remote():
+    """Run grounding test on Modal."""
+    from src.services.gemini import get_gemini_client
+
+    client = get_gemini_client()
+    result = await client.grounded_query(
+        query="What's the current price of Bitcoin?"
+    )
+    return {
+        "answer": result.text[:500] if result.text else "No answer",
+        "citations": len(result.citations) if result.citations else 0
+    }
+
+
+@app.function(image=image, secrets=secrets, timeout=300)
+async def _test_deep_research_remote():
+    """Run deep research test on Modal."""
+    from src.tools.gemini_tools import execute_deep_research
+
+    result = await execute_deep_research(
+        query="Current state of AI agents in 2025",
+        progress_callback=lambda s: print(f"Progress: {s}"),
+        max_iterations=2
+    )
+    return result
+
+
 @app.local_entrypoint()
 def test_gemini():
     """Test Gemini client initialization."""
-    import asyncio
-
-    async def run():
-        # Import inside function to use Modal environment
-        import sys
-        sys.path.insert(0, "/root")
-
-        from src.services.gemini import get_gemini_client
-
-        client = get_gemini_client()
-        print(f"Project: {client.project_id}")
-        print(f"Location: {client.location}")
-
-        result = await client.chat(
-            messages=[{"role": "user", "content": "Hello, test message. Reply briefly."}],
-            thinking_level="minimal"
-        )
-        print(f"Response: {result[:200]}")
-
-    asyncio.run(run())
+    print("Running Gemini test on Modal...")
+    result = _test_gemini_remote.remote()
+    print(f"Project: {result['project']}")
+    print(f"Location: {result['location']}")
+    print(f"Response: {result['response']}")
 
 
 @app.local_entrypoint()
 def test_grounding():
     """Test grounded query."""
-    import asyncio
-
-    async def run():
-        import sys
-        sys.path.insert(0, "/root")
-
-        from src.services.gemini import get_gemini_client
-
-        client = get_gemini_client()
-        result = await client.grounded_query(
-            query="What's the current price of Bitcoin?"
-        )
-        print(f"Answer: {result.text[:300]}")
-        print(f"Citations: {len(result.citations)}")
-
-    asyncio.run(run())
+    print("Running grounding test on Modal...")
+    result = _test_grounding_remote.remote()
+    print(f"Answer: {result['answer']}")
+    print(f"Citations: {result['citations']}")
 
 
 @app.local_entrypoint()
 def test_deep_research():
     """Test deep research skill."""
-    import asyncio
-
-    async def run():
-        import sys
-        sys.path.insert(0, "/root")
-
-        from src.tools.gemini_tools import execute_deep_research
-
-        def progress(s):
-            print(f"Progress: {s}")
-
-        result = await execute_deep_research(
-            query="Current state of AI agents in 2025",
-            progress_callback=progress,
-            max_iterations=2
-        )
-        print(f"\nSuccess: {result['success']}")
-        if result['success']:
-            print(f"Summary: {result['summary'][:300]}")
-            print(f"Queries: {result['query_count']}")
-            print(f"Duration: {result['duration_seconds']:.1f}s")
-
-    asyncio.run(run())
+    print("Running deep research test on Modal...")
+    result = _test_deep_research_remote.remote()
+    print(f"\nSuccess: {result['success']}")
+    if result['success']:
+        print(f"Summary: {result['summary'][:300]}")
+        print(f"Queries: {result['query_count']}")
+        print(f"Duration: {result['duration_seconds']:.1f}s")

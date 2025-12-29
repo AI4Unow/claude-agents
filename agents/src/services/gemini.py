@@ -2,6 +2,7 @@
 import os
 import json
 import time
+import tempfile
 from typing import List, Dict, Optional, Callable, Any, AsyncGenerator
 from dataclasses import dataclass
 
@@ -9,6 +10,17 @@ from src.utils.logging import get_logger
 from src.core.resilience import gemini_circuit, CircuitOpenError, CircuitState
 
 logger = get_logger()
+
+
+def _setup_gcp_credentials() -> None:
+    """Set up GCP credentials from environment JSON."""
+    creds_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+    if creds_json and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        # Write JSON to temp file and set env var
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write(creds_json)
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = f.name
+            logger.info("gcp_credentials_setup", path=f.name)
 
 
 @dataclass
@@ -32,30 +44,44 @@ class ResearchReport:
 
 
 class GeminiClient:
-    """Vertex AI Gemini client with circuit breaker."""
+    """Gemini client with circuit breaker. Supports both API key and Vertex AI modes."""
 
     def __init__(self):
         self.project_id = os.environ.get("GCP_PROJECT_ID", "")
         self.location = os.environ.get("GCP_LOCATION", "us-central1")
+        self.api_key = os.environ.get("GEMINI_API_KEY", "")
         self._client = None
+
+        # Prefer API key (free tier), fall back to Vertex AI
+        self.use_vertex = not self.api_key and bool(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON"))
+        if self.use_vertex:
+            _setup_gcp_credentials()
+            logger.info("gemini_mode", mode="vertex_ai", project=self.project_id)
+        elif self.api_key:
+            logger.info("gemini_mode", mode="api_key")
+        else:
+            logger.warning("gemini_no_credentials")
 
     @property
     def client(self):
         """Lazy-load genai client."""
         if self._client is None:
             from google import genai
-            self._client = genai.Client(
-                vertexai=True,
-                project=self.project_id,
-                location=self.location
-            )
+            if self.use_vertex:
+                self._client = genai.Client(
+                    vertexai=True,
+                    project=self.project_id,
+                    location=self.location
+                )
+            else:
+                self._client = genai.Client(api_key=self.api_key)
         return self._client
 
     async def chat(
         self,
         messages: List[Dict],
         model: str = "gemini-2.0-flash-001",
-        thinking_level: str = "medium",
+        thinking_level: str = None,  # Only for models that support it (2.5+)
         tools: List[str] = None,
         max_tokens: int = 8192,
         stream: bool = False,
@@ -64,8 +90,8 @@ class GeminiClient:
 
         Args:
             messages: [{"role": "user", "content": "..."}]
-            model: gemini-2.0-flash-001, gemini-3-pro-preview
-            thinking_level: minimal, low, medium, high
+            model: gemini-2.0-flash-001, gemini-2.5-flash-preview-05-20
+            thinking_level: minimal, low, medium, high (only for 2.5+ models)
             tools: ["google_search", "code_execution"]
             stream: Return generator if True
 
@@ -84,11 +110,13 @@ class GeminiClient:
         if tools and "code_execution" in tools:
             tool_configs.append(types.Tool(code_execution=types.ToolCodeExecution()))
 
-        # Build thinking config
-        thinking_config = types.ThinkingConfig(
-            include_thoughts=False,
-            thinking_level=thinking_level
-        ) if thinking_level else None
+        # Build thinking config (only for 2.5+ models)
+        thinking_config = None
+        if thinking_level and "2.5" in model:
+            thinking_config = types.ThinkingConfig(
+                include_thoughts=False,
+                thinking_level=thinking_level
+            )
 
         config = types.GenerateContentConfig(
             max_output_tokens=max_tokens,
@@ -239,9 +267,7 @@ Topic: {query}
 
 Output as JSON array of strings, each a searchable query. Only output the JSON array, no explanation."""
 
-        decompose_config = types.GenerateContentConfig(
-            thinking_config=types.ThinkingConfig(thinking_level="high"),
-        )
+        decompose_config = types.GenerateContentConfig()  # No thinking for 2.0 models
 
         try:
             response = await self.client.aio.models.generate_content(
@@ -333,9 +359,7 @@ Output as professional markdown."""
             response = await self.client.aio.models.generate_content(
                 model=model,
                 contents=synthesize_prompt,
-                config=types.GenerateContentConfig(
-                    thinking_config=types.ThinkingConfig(thinking_level="high"),
-                ),
+                config=types.GenerateContentConfig(),  # No thinking for 2.0 models
             )
             gemini_circuit._record_success()
 
