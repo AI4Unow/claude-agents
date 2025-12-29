@@ -74,7 +74,10 @@ The II Framework agents are deployed and operational on Modal.com with full reli
 - [x] Permission-based commands
 - [x] Execution modes (simple, routed, auto)
 - [x] Task complexity classification
-- [x] 55 skills (expanded from 24)
+- [x] 53 skills (expanded from 24)
+- [x] Stress test framework (Locust + chaos engineering)
+- [x] Markdown-to-HTML conversion for Telegram
+- [x] 22 test files (unit + stress)
 
 ## Next Priorities
 
@@ -171,3 +174,5 @@ Implementation plans in `plans/` directory:
 | Monthly cost | <$60 | ~$40-50 |
 | Uptime | >99% | Monitoring |
 | Gemini research duration | <60s | ~25-35s |
+| Stress test concurrent users | 100+ | Locust framework ready |
+| Total skills | 60+ | 53 deployed |

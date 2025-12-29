@@ -190,10 +190,10 @@ result = await registry.execute("web_search", {"query": "..."})
 ```python
 from src.core.resilience import CircuitBreaker, with_retry
 
-# Pre-configured circuits
+# Pre-configured circuits (7 total)
 from src.core import (
     exa_circuit, tavily_circuit, firebase_circuit,
-    qdrant_circuit, claude_circuit, telegram_circuit
+    qdrant_circuit, claude_circuit, telegram_circuit, gemini_circuit
 )
 
 # Use circuit breaker

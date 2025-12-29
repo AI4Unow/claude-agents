@@ -37,6 +37,7 @@ class LLMClient:
         temperature: float = 0.7,
         tools: Optional[List[dict]] = None,
         timeout: float = 60.0,
+        model: Optional[str] = None,
     ):
         """Send chat completion request.
 
@@ -47,6 +48,7 @@ class LLMClient:
             temperature: Sampling temperature
             tools: Optional list of tool definitions for tool_use
             timeout: Request timeout in seconds
+            model: Optional model override (default: uses self.model)
 
         Returns:
             Full Message object if tools provided, else text string
@@ -60,8 +62,11 @@ class LLMClient:
             logger.warning("claude_circuit_open", cooldown_remaining=cooldown)
             raise CircuitOpenError("claude_api", cooldown)
 
+        # Use provided model or default
+        effective_model = model or self.model
+
         kwargs = {
-            "model": self.model,
+            "model": effective_model,
             "max_tokens": max_tokens,
             "system": system or "You are a helpful assistant.",
             "messages": messages,
@@ -73,7 +78,7 @@ class LLMClient:
         try:
             response = self.client.messages.create(**kwargs)
             claude_circuit._record_success()
-            logger.info("llm_success", model=self.model)
+            logger.info("llm_success", model=effective_model)
 
             # Return full response if tools (for tool_use inspection), else just text
             if tools:

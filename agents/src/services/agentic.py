@@ -19,6 +19,7 @@ async def run_agentic_loop(
     user_id: Optional[int] = None,
     skill: Optional[str] = None,
     progress_callback: Optional[callable] = None,
+    model: Optional[str] = None,
 ) -> str:
     """Run agentic loop with tool execution, conversation persistence, and tracing.
 
@@ -28,6 +29,7 @@ async def run_agentic_loop(
         user_id: Telegram user ID for conversation persistence
         skill: Skill name for trace metadata
         progress_callback: Optional async callback for progress updates
+        model: Optional model override for LLM calls
 
     Returns:
         Final text response
@@ -42,6 +44,7 @@ async def run_agentic_loop(
                 trace_ctx=trace_ctx,
                 progress_callback=progress_callback,
                 skill=skill,
+                model=model,
             )
             trace_ctx.set_output(result)
             return result
@@ -59,6 +62,7 @@ async def _execute_loop(
     trace_ctx: TraceContext,
     progress_callback: Optional[callable] = None,
     skill: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> str:
     """Internal loop execution with trace capture."""
     # Initialize tools
@@ -91,6 +95,7 @@ async def _execute_loop(
             system=system,
             max_tokens=4096,
             tools=tools if tools else None,
+            model=model,
         )
 
         # Collect text content

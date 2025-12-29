@@ -174,6 +174,7 @@ Skill {
 │  Qdrant         │ qdrant          │ 5 fails   │ 60s                         │
 │  Claude API     │ claude_api      │ 3 fails   │ 60s                         │
 │  Telegram API   │ telegram_api    │ 5 fails   │ 30s                         │
+│  Gemini API     │ gemini_api      │ 3 fails   │ 60s                         │
 │                                                                              │
 │  States:                                                                     │
 │  ├── CLOSED: Normal operation, requests pass through                        │

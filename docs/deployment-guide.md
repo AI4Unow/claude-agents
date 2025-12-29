@@ -90,12 +90,14 @@ modal secret create admin-credentials \
   ADMIN_API_TOKEN=your-secure-token
 ```
 
-### GCP Credentials (Gemini API)
+### GCP Credentials (Gemini API via Vertex AI)
 ```bash
 modal secret create gcp-credentials \
   GCP_PROJECT_ID=your-gcp-project \
   GCP_LOCATION=us-central1 \
   GOOGLE_APPLICATION_CREDENTIALS_JSON='{"type":"service_account",...}'
+
+# Note: Enable Vertex AI API in GCP Console before using
 ```
 
 ## Deployment Commands

@@ -47,6 +47,8 @@ Deploy self-improving AI agents on Modal.com using the **II Framework (Informati
 - [x] Gemini API integration (research, grounding, vision, thinking)
 - [x] Firebase Storage for research reports
 - [x] User tier system (guest, user, developer, admin)
+- [x] Stress test framework (Locust + chaos engineering)
+- [x] 53 skills deployed (8 local, 40+ remote, 7 hybrid)
 - [ ] Monthly cost <$60 (monitoring)
 
 ## Implemented Features

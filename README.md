@@ -12,10 +12,11 @@ Multi-agent system using the **II Framework (Information & Implementation)** dep
 - 7 circuit breakers (claude, exa, tavily, firebase, qdrant, telegram, gemini)
 - Execution tracing with tool-level timing
 - Self-improvement loop with Telegram admin approval
-- 55 skills (local, remote, hybrid deployment)
+- 53 skills (8 local, 40+ remote, 7 hybrid deployment)
 - Gemini API integration (deep research, grounding, vision, thinking)
 - Firebase Storage for research reports
 - User tier system (guest, user, developer, admin)
+- Stress test framework (Locust + chaos engineering)
 
 ## Agents
 
@@ -85,10 +86,10 @@ modal app logs claude-agents
 
 ## Skill Architecture
 
-55 skills with deployment types:
+53 skills with deployment types:
 - **Local** (8): canvas-design, docx, xlsx, pptx, pdf, media-processing, image-enhancer, video-downloader
-- **Remote** (40+): planning, debugging, research, code-review, gemini-*, etc.
-- **Hybrid** (7): better-auth, chrome-devtools, mcp-builder, etc.
+- **Remote** (40+): planning, debugging, research, code-review, gemini-*, backend-dev, frontend-dev, mobile-dev, ui-ux-pro-max, ai-multimodal, automation skills
+- **Hybrid** (7): better-auth, chrome-devtools, mcp-builder, mcp-management, repomix, sequential-thinking, webapp-testing
 
 ### Gemini Skills (New)
 | Skill | Description |
@@ -102,31 +103,32 @@ modal app logs claude-agents
 
 ```
 agents/
-├── main.py                    # Modal app entry point
+├── main.py                    # Modal app entry point (2,608 lines)
 ├── src/
-│   ├── agents/                # Agent implementations
-│   ├── services/              # External integrations
-│   │   ├── firebase.py        # Firestore + Storage
-│   │   ├── gemini.py          # Gemini API client
-│   │   ├── llm.py             # Claude API
-│   │   └── telegram.py        # Bot utilities
-│   ├── tools/                 # Tool system
+│   ├── agents/                # Agent implementations (4)
+│   ├── services/              # External integrations (8)
+│   │   ├── firebase.py        # Firestore + Storage (~1,200 lines)
+│   │   ├── gemini.py          # Gemini API client (441 lines)
+│   │   ├── llm.py             # Claude API (200 lines)
+│   │   └── telegram.py        # Bot utilities (400 lines)
+│   ├── tools/                 # Tool system (8 tools)
 │   │   ├── gemini_tools.py    # Gemini skill handlers
 │   │   ├── web_search.py      # Exa/Tavily
 │   │   └── ...
-│   └── core/                  # II Framework
+│   └── core/                  # II Framework (10 modules)
 │       ├── state.py           # L1 cache + L2 Firebase
-│       ├── resilience.py      # Circuit breakers
+│       ├── resilience.py      # 7 circuit breakers
 │       ├── orchestrator.py    # Multi-skill execution
 │       └── improvement.py     # Self-improvement
-├── skills/                    # 55 skill info.md files
-└── scripts/
-    ├── local-executor.py      # Local skill executor
-    └── pull-improvements.py   # Apply improvements
+├── skills/                    # 53 skill info.md files
+├── scripts/                   # 5 utility scripts
+│   ├── local-executor.py      # Local skill executor
+│   └── pull-improvements.py   # Apply improvements
+└── tests/                     # 22 test files (unit + stress)
 docs/
 ├── project-overview-pdr.md
 ├── system-architecture.md
-├── codebase-summary.md
+├── codebase-summary.md        # Comprehensive overview
 ├── code-standards.md
 ├── project-roadmap.md
 └── deployment-guide.md

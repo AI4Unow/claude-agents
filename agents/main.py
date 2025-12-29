@@ -1373,9 +1373,19 @@ async def _run_simple(
     user: dict,
     chat_id: int,
     progress_msg_id: int,
-    progress_callback
+    progress_callback,
+    model: str = None,
 ) -> str:
-    """Run direct LLM response (existing agentic loop)."""
+    """Run direct LLM response (existing agentic loop).
+
+    Args:
+        text: User message
+        user: User dict
+        chat_id: Telegram chat ID
+        progress_msg_id: Progress message ID
+        progress_callback: Callback for progress updates
+        model: Optional model override (e.g., haiku for simple queries)
+    """
     from src.services.agentic import run_agentic_loop
     from pathlib import Path
     import aiofiles
@@ -1392,6 +1402,7 @@ async def _run_simple(
         system=system_prompt,
         user_id=user.get("id"),
         progress_callback=progress_callback,
+        model=model,
     )
 
 
@@ -1549,15 +1560,22 @@ async def process_message(
                 await edit_progress_message(chat_id, progress_msg_id, "🔧 <i>Orchestrating...</i>")
                 response = await _run_orchestrated(text, user, chat_id, progress_msg_id)
             else:
-                response = await _run_simple(text, user, chat_id, progress_msg_id, update_progress)
+                # Use Haiku for simple queries (30x cheaper, faster)
+                response = await _run_simple(
+                    text, user, chat_id, progress_msg_id, update_progress,
+                    model="kiro-claude-haiku-4-5-agentic"
+                )
 
         elif mode == "routed":
             # Route to best skill
             response = await _run_routed(text, user, chat_id, progress_msg_id)
 
         else:
-            # Default: simple mode - direct LLM response
-            response = await _run_simple(text, user, chat_id, progress_msg_id, update_progress)
+            # Default: simple mode - use Haiku for fast, cheap responses
+            response = await _run_simple(
+                text, user, chat_id, progress_msg_id, update_progress,
+                model="kiro-claude-haiku-4-5-agentic"
+            )
 
         # Success reaction
         if message_id:
