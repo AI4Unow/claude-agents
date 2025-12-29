@@ -4,14 +4,68 @@ Claude Agents SDK Pattern: ROUTING
 - Classify user request semantically
 - Route to best matching skill(s)
 - Support fallback to keyword search
+- Parse explicit /skill and @skill invocations
 """
+import re
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from src.utils.logging import get_logger
 from src.skills.registry import SkillRegistry, Skill, get_registry
 
 logger = get_logger()
+
+# Pattern for explicit skill invocation: /skill_name or @skill_name
+EXPLICIT_SKILL_PATTERN = re.compile(r'^[/@]([\w-]+)\s*(.*)$', re.IGNORECASE)
+
+
+def parse_explicit_skill(
+    message: str,
+    registry: Optional[SkillRegistry] = None
+) -> Optional[Tuple[str, str]]:
+    """Parse explicit /skill or @skill invocation.
+
+    Args:
+        message: User message to parse
+        registry: Skill registry for validation (uses singleton if None)
+
+    Returns:
+        (skill_name, remaining_text) if matched, None otherwise
+
+    Examples:
+        "/research quantum computing" -> ("gemini-deep-research", "quantum computing")
+        "@design create poster" -> ("canvas-design", "create poster")
+        "/unknown xyz" -> None (no matching skill)
+    """
+    match = EXPLICIT_SKILL_PATTERN.match(message.strip())
+    if not match:
+        return None
+
+    skill_query = match.group(1).lower()
+    remaining = match.group(2).strip()
+
+    reg = registry or get_registry()
+    skill_names = reg.get_names()
+
+    # Exact match first
+    if skill_query in skill_names:
+        logger.info("explicit_skill_exact", skill=skill_query)
+        return (skill_query, remaining)
+
+    # Prefix match (e.g., "res" -> "research")
+    for name in skill_names:
+        if name.startswith(skill_query):
+            logger.info("explicit_skill_prefix", query=skill_query, skill=name)
+            return (name, remaining)
+
+    # Partial match (e.g., "research" -> "gemini-deep-research")
+    for name in skill_names:
+        if skill_query in name:
+            logger.info("explicit_skill_partial", query=skill_query, skill=name)
+            return (name, remaining)
+
+    logger.debug("explicit_skill_no_match", query=skill_query)
+    return None
 
 
 @dataclass

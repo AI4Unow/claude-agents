@@ -1549,22 +1549,50 @@ async def process_message(
 
         # Route based on mode
         if mode == "auto":
-            # Classify complexity and route accordingly
-            from src.core.complexity import classify_complexity
-            await edit_progress_message(chat_id, progress_msg_id, "🧠 <i>Analyzing...</i>")
+            from src.core.intent import classify_intent
+            from src.core.router import parse_explicit_skill
+            from src.skills.registry import get_registry
 
-            complexity = await classify_complexity(text)
-            logger.info("complexity_detected", complexity=complexity, mode=mode)
-
-            if complexity == "complex":
-                await edit_progress_message(chat_id, progress_msg_id, "🔧 <i>Orchestrating...</i>")
-                response = await _run_orchestrated(text, user, chat_id, progress_msg_id)
+            # Check explicit skill invocation first (/skill or @skill)
+            explicit = parse_explicit_skill(text, get_registry())
+            if explicit:
+                skill_name, remaining_text = explicit
+                await edit_progress_message(chat_id, progress_msg_id, f"🎯 <i>{skill_name}</i>")
+                result = await execute_skill_simple(skill_name, remaining_text or text, {"user": user})
+                from src.services.telegram import format_skill_result
+                response = format_skill_result(skill_name, result, 0)
             else:
-                # Use Haiku for simple queries (30x cheaper, faster)
-                response = await _run_simple(
-                    text, user, chat_id, progress_msg_id, update_progress,
-                    model="kiro-claude-haiku-4-5-agentic"
-                )
+                # Intent classification (CHAT/SKILL/ORCHESTRATE)
+                await edit_progress_message(chat_id, progress_msg_id, "🧠 <i>Analyzing...</i>")
+                intent = await classify_intent(text)
+                logger.info("intent_detected", intent=intent, mode=mode)
+
+                if intent == "orchestrate":
+                    await edit_progress_message(chat_id, progress_msg_id, "🔧 <i>Orchestrating...</i>")
+                    response = await _run_orchestrated(text, user, chat_id, progress_msg_id)
+                elif intent == "skill":
+                    # Route to best matching skill via semantic search
+                    await edit_progress_message(chat_id, progress_msg_id, "🔍 <i>Finding skill...</i>")
+                    from src.core.router import SkillRouter
+                    router = SkillRouter()
+                    skill = await router.route_single(text)
+                    if skill:
+                        await edit_progress_message(chat_id, progress_msg_id, f"🎯 <i>{skill.name}</i>")
+                        result = await execute_skill_simple(skill.name, text, {"user": user})
+                        from src.services.telegram import format_skill_result
+                        response = format_skill_result(skill.name, result, 0)
+                    else:
+                        # No skill matched, fall back to chat
+                        response = await _run_simple(
+                            text, user, chat_id, progress_msg_id, update_progress,
+                            model="kiro-claude-haiku-4-5-agentic"
+                        )
+                else:
+                    # CHAT intent - use Haiku for fast, cheap responses
+                    response = await _run_simple(
+                        text, user, chat_id, progress_msg_id, update_progress,
+                        model="kiro-claude-haiku-4-5-agentic"
+                    )
 
         elif mode == "routed":
             # Route to best skill
