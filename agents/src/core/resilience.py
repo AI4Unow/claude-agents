@@ -238,6 +238,19 @@ def get_circuit_stats() -> Dict[str, Dict]:
     }
 
 
+def get_circuit_status() -> Dict[str, str]:
+    """Get simplified status (state only) for all circuits."""
+    return {
+        "exa": exa_circuit.state.value,
+        "tavily": tavily_circuit.state.value,
+        "firebase": firebase_circuit.state.value,
+        "qdrant": qdrant_circuit.state.value,
+        "claude": claude_circuit.state.value,
+        "telegram": telegram_circuit.state.value,
+        "gemini": gemini_circuit.state.value,
+    }
+
+
 def reset_all_circuits():
     """Reset all circuits (for testing/recovery)."""
     exa_circuit.reset()

@@ -18,7 +18,7 @@ TIER_HIERARCHY = {"guest": 0, "user": 1, "developer": 2, "admin": 3}
 # Rate limits per tier (requests per minute)
 TIER_RATE_LIMITS = {
     "guest": 5,
-    "user": 20,
+    "user": 40,
     "developer": 50,
     "admin": 1000  # effectively unlimited
 }

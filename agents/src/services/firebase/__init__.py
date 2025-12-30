@@ -14,10 +14,14 @@ This package re-exports all functions from domain-specific modules for backward 
 # Re-export client utilities
 from ._client import get_db, Collections
 
+# Re-export firestore for backward compatibility with tests
+from firebase_admin import firestore
+
 # Re-export type constants
 from .tiers import TierType, TIER_HIERARCHY, TIER_RATE_LIMITS
 from .faq import FAQEntry
 from .local_tasks import LocalTask
+from .pkm import PKMItem, ItemType, ItemStatus
 
 # Users
 from .users import (
@@ -104,6 +108,17 @@ from .tokens import (
     save_token,
 )
 
+# PKM
+from .pkm import (
+    create_item,
+    get_item,
+    update_item,
+    delete_item,
+    list_items,
+    get_inbox,
+    get_tasks,
+)
+
 # For compatibility with old imports
 def get_storage_bucket():
     """Get Firebase Storage bucket (legacy function for compatibility)."""
@@ -129,6 +144,9 @@ __all__ = [
     "TIER_RATE_LIMITS",
     "FAQEntry",
     "LocalTask",
+    "PKMItem",
+    "ItemType",
+    "ItemStatus",
 
     # Users
     "get_user",
@@ -196,4 +214,13 @@ __all__ = [
     # Tokens
     "get_token",
     "save_token",
+
+    # PKM
+    "create_item",
+    "get_item",
+    "update_item",
+    "delete_item",
+    "list_items",
+    "get_inbox",
+    "get_tasks",
 ]

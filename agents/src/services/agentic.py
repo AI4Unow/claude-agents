@@ -10,7 +10,7 @@ from src.utils.logging import get_logger
 
 logger = get_logger()
 
-MAX_ITERATIONS = 5
+MAX_ITERATIONS = 10
 
 
 async def run_agentic_loop(

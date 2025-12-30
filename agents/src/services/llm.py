@@ -12,9 +12,10 @@ class LLMClient:
     """LLM client using Anthropic-compatible API."""
 
     def __init__(self):
-        self.api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        self.base_url = os.environ.get("ANTHROPIC_BASE_URL", "https://api.ai4u.now")
-        self.model = os.environ.get("ANTHROPIC_MODEL", "kiro-claude-opus-4-5-agentic")
+        # Use `or` to handle empty strings from env vars
+        self.api_key = os.environ.get("ANTHROPIC_API_KEY", "") or ""
+        self.base_url = os.environ.get("ANTHROPIC_BASE_URL", "") or "https://api.ai4u.now"
+        self.model = os.environ.get("ANTHROPIC_MODEL", "") or "kiro-claude-opus-4-5-agentic"
         self._client = None
 
     @property

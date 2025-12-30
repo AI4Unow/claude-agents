@@ -133,7 +133,7 @@ class TestCommandRouter:
         mock_state = AsyncMock()
         mock_state.get_user_tier_cached = AsyncMock(return_value="user")
 
-        with patch("commands.base.get_state_manager", return_value=mock_state):
+        with patch("src.core.state.get_state_manager", return_value=mock_state):
             result = await router.handle("/user_cmd", {"id": 123}, 456)
             assert result == "user access"
 
@@ -148,7 +148,7 @@ class TestCommandRouter:
         mock_state = AsyncMock()
         mock_state.get_user_tier_cached = AsyncMock(return_value="guest")
 
-        with patch("commands.base.get_state_manager", return_value=mock_state):
+        with patch("src.core.state.get_state_manager", return_value=mock_state):
             result = await router.handle("/dev_cmd", {"id": 123}, 456)
             assert "Access denied" in result
 
