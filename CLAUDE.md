@@ -16,11 +16,13 @@ See [docs/project-overview-pdr.md](docs/project-overview-pdr.md) for full requir
 
 ### Key Features
 - 7 circuit breakers (claude, exa, tavily, firebase, qdrant, telegram, gemini)
-- 53 skills (local, remote, hybrid deployment)
+- 55 skills (local, remote, hybrid deployment)
 - Gemini API integration (deep research, grounding, vision, thinking)
 - Firebase Storage for research reports
 - User tier system (guest, user, developer, admin)
 - Skill auto-sync watcher with launchd
+- **Personalization system** (profiles, context, macros, activity learning)
+- **Smart FAQ system** (hybrid keyword + semantic matching)
 
 ### LLM Models (via ai4u.now API)
 | Purpose | Model |
@@ -125,9 +127,10 @@ Request → Webhook → Agentic Loop → Tool Execution → Response
 │   ├── main.py                    # Modal app entry point
 │   ├── src/
 │   │   ├── agents/                # Agent implementations
-│   │   ├── services/              # External integrations (llm, firebase, qdrant, gemini)
+│   │   ├── services/              # External integrations (llm, firebase, qdrant, gemini, personalization)
 │   │   ├── tools/                 # Tool system (web_search, code_exec, gemini_tools)
-│   │   ├── core/                  # II Framework (state, resilience, trace, improvement)
+│   │   ├── core/                  # II Framework (state, resilience, trace, improvement, faq, suggestions)
+│   │   ├── models/                # Data models (personalization)
 │   │   └── skills/                # Skill registry
 │   └── skills/                    # 55 skill info.md files
 ├── docs/                          # Documentation

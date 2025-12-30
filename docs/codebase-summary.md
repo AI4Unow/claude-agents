@@ -4,17 +4,16 @@
 
 **Phase:** Production MVP
 **Deploy URL:** https://duc-a-nguyen--claude-agents-telegramchatagent-app.modal.run
-**Last Updated:** Dec 29, 2025
+**Last Updated:** Dec 30, 2025
 
 **Statistics:**
-- **53 skills** in agents/skills/ directory
-- **41 Python files** in agents/src/
+- **55 skills** in agents/skills/ directory
+- **50+ Python files** in agents/src/
 - **22 test files** (unit + stress tests with Locust framework)
-- **2,608 lines** in main.py
+- **~3,200 lines** in main.py
 - **7 circuit breakers** (exa, tavily, firebase, qdrant, claude, telegram, gemini)
 - **14 API endpoints** (health, webhooks, skill execution, reports, traces, circuits)
 - **4 agents** (Telegram, GitHub, Data, Content)
-- **841,696 tokens** total codebase (via repomix)
 
 **Key Features:**
 - Execution tracing with tool-level timing
@@ -24,6 +23,8 @@
 - Firebase Storage for research reports
 - User tier system (guest, user, developer, admin)
 - Hybrid skill architecture (local, remote, both)
+- **Personalization system** (profiles, context, macros, activity learning)
+- **Smart FAQ system** (hybrid keyword + semantic matching)
 
 ## Repository Structure
 
@@ -44,8 +45,8 @@
 │   ├── 251229-1515-telegram-stress-test/
 │   ├── 251228-0903-skills-categorization/
 │   └── reports/                   # Planning reports
-└── agents/                        # Main codebase
-    ├── main.py                    # Modal app entry point (2,608 lines)
+├── agents/                        # Main codebase
+    ├── main.py                    # Modal app entry point (~3,200 lines)
     ├── modal.toml                 # Modal configuration
     ├── requirements.txt           # Python dependencies
     ├── src/
@@ -54,13 +55,14 @@
     │   ├── tools/                 # Tool system
     │   ├── core/                  # II Framework core components
     │   ├── skills/                # Skill registry
+    │   ├── models/                # Data models (personalization)
     │   └── utils/                 # Utilities (logging)
-    ├── skills/                    # 53 skill info.md files
+    ├── skills/                    # 55 skill info.md files
     ├── scripts/                   # Utility scripts
     └── tests/                     # 22 test files
 ```
 
-## Entry Point (main.py - 2,608 lines)
+## Entry Point (main.py - ~3,200 lines)
 
 The main Modal app defining:
 - **FastAPI web application** with 14 endpoints
@@ -101,8 +103,14 @@ The main Modal app defining:
 | `agentic.py` | 260 | Agentic loop with tool execution + conversation persistence |
 | `qdrant.py` | 617 | Qdrant vector database client |
 | `telegram.py` | 400 | Telegram message utilities + formatters (markdown-to-HTML) |
-| `embeddings.py` | 80 | Embedding generation |
+| `embeddings.py` | 200 | Embedding generation with caching |
 | `media.py` | 127 | Media processing utilities |
+| `user_profile.py` | 200 | User profile CRUD + onboarding |
+| `user_context.py` | 150 | Work context management |
+| `user_macros.py` | 260 | Personal macros with NLU detection |
+| `activity.py` | 250 | Activity logging + pattern analysis |
+| `data_deletion.py` | 160 | GDPR-compliant data deletion |
+| `personalization.py` | 100 | Personalization loader with L1/L2 cache |
 
 ### Tools (src/tools/)
 
@@ -131,6 +139,15 @@ The main Modal app defining:
 | `context_optimization.py` | 283 | Context compaction and optimization |
 | `chain.py` | 243 | Sequential skill pipeline execution |
 | `router.py` | 160 | Semantic skill routing via Qdrant |
+| `faq.py` | 350 | Smart FAQ with hybrid keyword + semantic matching |
+| `suggestions.py` | 200 | Proactive suggestion engine |
+| `macro_executor.py` | 170 | Macro execution with rate limiting |
+
+### Models (src/models/)
+
+| File | Purpose |
+|------|---------|
+| `personalization.py` | Data models (UserProfile, WorkContext, Macro, PersonalContext) |
 
 #### Circuit Breakers (resilience.py)
 
@@ -183,7 +200,7 @@ Features:
 - **User modes**: simple, routed, auto
 - **Conversation persistence**: Last 20 messages per user
 
-## Skills (agents/skills/ - 53 total)
+## Skills (agents/skills/ - 55 total)
 
 Organized by deployment type:
 
@@ -296,6 +313,12 @@ deployment: local|remote|both    # Determines execution environment
 | `/admin reset <circuit>` | Admin | Reset circuit breaker |
 | `/remind <time> <msg>` | Admin | Set reminder |
 | `/reminders` | Admin | List reminders |
+| `/profile [set]` | All | View/edit user profile |
+| `/context [set/clear]` | All | Manage work context |
+| `/macro [add/list/del]` | All | Personal macro management |
+| `/activity [stats]` | All | View activity history |
+| `/suggest` | All | Get proactive suggestions |
+| `/forget` | All | Delete all personal data (GDPR) |
 
 ## Technology Stack
 
@@ -339,6 +362,8 @@ Framework files:
 | `local-executor.py` | Poll Firebase for local tasks, execute via Claude Code |
 | `pull-improvements.py` | Fetch approved improvements from Firebase, apply to local skills |
 | `skill-to-modal.py` | Helper for skill deployment |
+| `skill-sync-watcher.py` | Auto-sync skills on file change (launchd) |
+| `seed-faq.py` | Seed FAQ entries to Qdrant |
 | `sync-skills.sh` | Shell script for skill synchronization |
 | `verify_phase_2a.py` | Verification script |
 
@@ -430,6 +455,37 @@ user_sessions/{sessionId}
   ├── messages: array (last 20)
   └── updatedAt: timestamp
 
+user_profiles/{userId}
+  ├── name: string
+  ├── tone: string ("concise" | "detailed" | "casual")
+  ├── domain: array (expertise areas)
+  ├── tech_stack: array (technologies)
+  ├── communication_prefs: map
+  ├── onboarded: boolean
+  └── updatedAt: timestamp
+
+user_contexts/{userId}
+  ├── current_project: string
+  ├── current_task: string
+  ├── blockers: array
+  ├── goals: array
+  └── updatedAt: timestamp
+
+user_macros/{userId}/macros/{macroId}
+  ├── trigger_phrases: array
+  ├── action_type: "command" | "skill" | "sequence"
+  ├── action: string
+  ├── description: string
+  ├── use_count: number
+  └── createdAt: timestamp
+
+user_activities/{userId}/logs/{activityId}
+  ├── action_type: string
+  ├── skill: string
+  ├── summary: string
+  ├── duration_ms: number
+  └── timestamp: timestamp
+
 reminders/{reminderId}
   ├── userId: string
   ├── message: string
@@ -450,6 +506,8 @@ research-reports/{userId}/{reportId}.md
 | `knowledge` | 768/1536 | Cross-skill insights |
 | `conversations` | 768/1536 | Chat history (future) |
 | `errors` | 768/1536 | Error pattern matching (future) |
+| `faq` | 768/1536 | FAQ entries for smart FAQ system |
+| `user_activities` | 768/1536 | User activity embeddings for pattern analysis |
 
 ## Key Design Patterns
 
@@ -479,13 +537,27 @@ research-reports/{userId}/{reportId}.md
 
 ## Recent Changes (Dec 30, 2025)
 
-1. **Model names corrected** - Using kiro-claude-* from ai4u.now API
-2. **Intent classifier** - `src/core/intent.py` for semantic routing
-3. **Skill auto-sync watcher** - `scripts/skill-sync-watcher.py` with launchd
-4. **Markdown-to-HTML conversion** - Fixed Telegram rendering
-5. **Complexity detector** - `src/core/complexity.py` for task classification
-6. **Stress test framework** - Locust + chaos engineering
-7. **53 skills** - With local/remote/both categorization
+1. **Personalization System** - Complete user personalization layer:
+   - User profiles (tone, domain, tech stack preferences)
+   - Work context (current project, task, blockers, goals)
+   - Personal macros with NLU detection (exact + semantic matching)
+   - Activity logging + pattern analysis
+   - Proactive suggestions engine
+   - GDPR-compliant data deletion (/forget command)
+   - Rate limiting (5s per-macro cooldown)
+   - Dangerous command blocking
+
+2. **Smart FAQ System** - Hybrid keyword + semantic FAQ matching:
+   - `src/core/faq.py` - FAQ engine with Qdrant vector search
+   - `scripts/seed-faq.py` - FAQ seeding script
+   - Keywords + embeddings for dual-phase matching
+
+3. **New Commands** - 6 personalization commands:
+   - `/profile`, `/context`, `/macro`, `/activity`, `/suggest`, `/forget`
+
+4. **Model names corrected** - Using kiro-claude-* from ai4u.now API
+5. **Skill auto-sync watcher** - `scripts/skill-sync-watcher.py` with launchd
+6. **55 skills** - With local/remote/both categorization
 
 ## LLM Models (via ai4u.now API)
 

@@ -79,6 +79,19 @@ The II Framework agents are deployed and operational on Modal.com with full reli
 - [x] Markdown-to-HTML conversion for Telegram
 - [x] 22 test files (unit + stress)
 
+### Phase 10: Personalization & FAQ (Dec 30, 2025)
+- [x] User profile system (tone, domain, tech stack)
+- [x] Work context management (project, task, blockers, goals)
+- [x] Personal macros with NLU detection (exact + semantic)
+- [x] Activity logging + pattern analysis (Qdrant + Firebase)
+- [x] Proactive suggestions engine
+- [x] GDPR-compliant data deletion (/forget)
+- [x] Rate limiting for macros (5s cooldown)
+- [x] Dangerous command blocking
+- [x] Smart FAQ system (hybrid keyword + semantic)
+- [x] 6 new commands (/profile, /context, /macro, /activity, /suggest, /forget)
+- [x] 55 skills total
+
 ## Next Priorities
 
 ### Near-Term (1-2 weeks)
@@ -175,4 +188,4 @@ Implementation plans in `plans/` directory:
 | Uptime | >99% | Monitoring |
 | Gemini research duration | <60s | ~25-35s |
 | Stress test concurrent users | 100+ | Locust framework ready |
-| Total skills | 60+ | 53 deployed |
+| Total skills | 60+ | 55 deployed |
