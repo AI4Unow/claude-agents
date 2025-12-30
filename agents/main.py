@@ -555,18 +555,13 @@ async def _run_chat_fast(
     system = """Your name is AI4U.now Bot. You are friendly and helpful.
 Keep responses brief for casual chat. Be natural and conversational."""
 
-    response = await llm.create_message(
+    # llm.chat() returns text string when no tools provided
+    result = llm.chat(
         messages=messages,
         system=system,
         model="kiro-claude-opus-4-5-agentic",
+        max_tokens=512,
     )
-
-    # Extract text from response
-    result = ""
-    if hasattr(response, "content"):
-        for block in response.content:
-            if hasattr(block, "text"):
-                result += block.text
 
     # Save to conversation history
     if user_id and result:
