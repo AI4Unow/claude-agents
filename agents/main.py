@@ -653,7 +653,17 @@ async def handle_command(command: str, user: dict, chat_id: int) -> str:
     args = parts[1] if len(parts) > 1 else ""
 
     if cmd == "/start":
-        return f"Hello {user.get('first_name', 'there')}! I'm your AI assistant powered by II Framework.\n\nUse /skills to browse available skills or /help for commands."
+        return f"""Hello {user.get('first_name', 'there')}! 👋
+
+I'm <b>AI4U.now Bot</b> — your unified AI assistant powered by multiple AI models (Gemini, Claude, GPT) through a single interface.
+
+<b>What I can do:</b>
+• Answer questions using the best AI models
+• Execute 50+ specialized skills
+• Research, analyze, and create content
+• Process images, documents, and more
+
+Use /skills to browse available skills or /help for commands."""
 
     elif cmd == "/help":
         # Get user tier for context-aware help
@@ -1391,7 +1401,7 @@ async def _run_simple(
     import aiofiles
 
     info_path = Path("/skills/telegram-chat/info.md")
-    system_prompt = "You are a helpful AI assistant with web search capability. Use the web_search tool when users ask about current events, weather, news, prices, or anything requiring up-to-date information."
+    system_prompt = "You are AI4U.now Bot, a unified AI assistant that provides access to multiple AI models (Gemini, Claude, GPT) through a single interface. You have web search capability. Use the web_search tool when users ask about current events, weather, news, prices, or anything requiring up-to-date information."
 
     if info_path.exists():
         async with aiofiles.open(info_path, 'r') as f:
@@ -2227,10 +2237,10 @@ def init_skills():
     from pathlib import Path
 
     skills = {
-        "telegram-chat": """# Telegram Chat Agent
+        "telegram-chat": """# AI4U.now Bot
 
 ## Instructions
-You are a helpful AI assistant communicating via Telegram.
+You are AI4U.now Bot, a unified AI assistant that provides access to multiple AI models (Gemini, Claude, GPT) through a single interface.
 - Be concise and friendly
 - Use markdown formatting when helpful
 - Respond in the same language as the user
@@ -2624,6 +2634,39 @@ def test_gemini():
     print(f"Project: {result['project']}")
     print(f"Location: {result['location']}")
     print(f"Response: {result['response']}")
+
+
+@app.function(
+    image=image,
+    secrets=[modal.Secret.from_name("firebase-credentials"), modal.Secret.from_name("admin-credentials")]
+)
+async def _grant_user_tier(telegram_id: int, tier: str):
+    """Grant tier to user (runs on Modal)."""
+    import os
+    from src.services.firebase import set_user_tier, get_user_tier
+
+    admin_id = int(os.environ.get("ADMIN_TELEGRAM_ID", "0"))
+
+    current = await get_user_tier(telegram_id)
+    success = await set_user_tier(telegram_id, tier, admin_id)
+    new_tier = await get_user_tier(telegram_id) if success else current
+
+    return {
+        "telegram_id": telegram_id,
+        "previous_tier": current,
+        "new_tier": new_tier,
+        "success": success
+    }
+
+
+@app.local_entrypoint()
+def grant_user(telegram_id: int, tier: str = "user"):
+    """Grant tier to user. Usage: modal run main.py::grant_user --telegram-id 123 --tier user"""
+    print(f"Granting {tier} tier to {telegram_id}...")
+    result = _grant_user_tier.remote(telegram_id, tier)
+    print(f"Previous tier: {result['previous_tier']}")
+    print(f"New tier: {result['new_tier']}")
+    print(f"Success: {result['success']}")
 
 
 @app.local_entrypoint()
