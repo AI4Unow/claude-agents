@@ -220,7 +220,7 @@ exa_circuit = CircuitBreaker("exa_api", threshold=3, cooldown=30)
 tavily_circuit = CircuitBreaker("tavily_api", threshold=3, cooldown=30)
 firebase_circuit = CircuitBreaker("firebase", threshold=5, cooldown=60)
 qdrant_circuit = CircuitBreaker("qdrant", threshold=5, cooldown=60)
-claude_circuit = CircuitBreaker("claude_api", threshold=3, cooldown=60)
+claude_circuit = CircuitBreaker("claude_api", threshold=5, cooldown=60)
 telegram_circuit = CircuitBreaker("telegram_api", threshold=5, cooldown=30)
 gemini_circuit = CircuitBreaker("gemini_api", threshold=3, cooldown=60)
 

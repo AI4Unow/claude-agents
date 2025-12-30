@@ -18,6 +18,9 @@ class LLMClient:
         self.model = os.environ.get("ANTHROPIC_MODEL", "") or "kiro-claude-opus-4-5-agentic"
         self._client = None
 
+        # Log initialization for cold start debugging
+        logger.info("llm_client_init", model=self.model, base_url=self.base_url[:30] if self.base_url else "none")
+
     @property
     def client(self):
         """Lazy-load Anthropic client."""
