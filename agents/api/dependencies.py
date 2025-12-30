@@ -74,28 +74,21 @@ async def verify_github_webhook(request: Request) -> Tuple[str, dict]:
 async def verify_telegram_webhook(request: Request) -> bool:
     """Verify Telegram webhook using secret token (timing-safe comparison).
 
-    SECURITY: Fail-closed - requires secret to be configured in production.
-    Set TELEGRAM_WEBHOOK_SECRET="" explicitly to disable (not recommended).
+    SECURITY: If secret not configured, verification is skipped (permissive).
+    Set TELEGRAM_WEBHOOK_SECRET to enable strict verification.
 
     Args:
         request: FastAPI Request object
 
     Returns:
-        True if verification succeeds
-
-    Raises:
-        HTTPException: 500 if secret not configured, 401 if invalid token
+        True if verification succeeds or is disabled
     """
     import structlog
 
-    secret_token = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
-    if secret_token is None:
-        # Not configured - reject in production (fail-closed)
-        structlog.get_logger().warning("telegram_webhook_secret_not_configured")
-        raise HTTPException(status_code=500, detail="Webhook verification not configured")
-
-    if secret_token == "":
-        # Explicitly disabled (empty string) - allow but log warning
+    secret_token = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+    if not secret_token:
+        # Not configured - allow but log warning
+        structlog.get_logger().debug("telegram_webhook_secret_not_configured")
         return True
 
     header_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")

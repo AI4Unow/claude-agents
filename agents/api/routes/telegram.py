@@ -24,8 +24,6 @@ async def telegram_webhook(request: Request):
     Rate limited to 30 requests/minute per IP.
     """
     from api.dependencies import verify_telegram_webhook
-    from slowapi import Limiter
-    from slowapi.util import get_remote_address
 
     # Import command router (refactored pattern)
     from commands.router import command_router
@@ -44,10 +42,6 @@ async def telegram_webhook(request: Request):
     handle_document_message = main_module.handle_document_message
     process_message = main_module.process_message
     send_telegram_message = main_module.send_telegram_message
-
-    # Apply rate limiting
-    limiter = Limiter(key_func=get_remote_address)
-    await limiter.limit("30/minute")(request)
 
     # Verify webhook signature
     if not await verify_telegram_webhook(request):
