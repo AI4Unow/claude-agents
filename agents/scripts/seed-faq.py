@@ -9,7 +9,7 @@ import modal
 # Build image with src directory
 image = (
     modal.Image.debian_slim(python_version="3.11")
-    .pip_install("firebase-admin", "qdrant-client", "structlog", "google-cloud-aiplatform")
+    .pip_install("firebase-admin", "qdrant-client", "structlog", "google-genai")
     .env({"PYTHONPATH": "/root"})
     .add_local_dir("src", remote_path="/root/src")
 )
@@ -157,12 +157,13 @@ FAQ_ENTRIES = [
 
 @app.function(image=image, secrets=secrets, timeout=300)
 async def seed_faq_entries():
-    """Seed all FAQ entries to Firebase and Qdrant."""
+    """Seed all FAQ entries to Firebase and Qdrant using batch embedding."""
     import sys
     sys.path.insert(0, "/root")
 
     from src.services.firebase import create_faq_entry, FAQEntry
-    from src.services.qdrant import get_text_embedding, upsert_faq_embedding, get_client, FAQ_COLLECTION, VECTOR_DIM
+    from src.services.qdrant import upsert_faq_embedding, get_client, FAQ_COLLECTION, VECTOR_DIM
+    from src.services.embeddings import get_embeddings_batch
     import structlog
 
     logger = structlog.get_logger()
@@ -189,18 +190,18 @@ async def seed_faq_entries():
         )
         logger.info("faq_collection_created", dim=VECTOR_DIM)
 
-    import asyncio
+    # Batch embed all answers in ONE API call (avoids rate limits)
+    answers = [data["answer"] for data in FAQ_ENTRIES]
+    logger.info("generating_batch_embeddings", count=len(answers))
+    embeddings = get_embeddings_batch(answers)
+    logger.info("batch_embeddings_complete", success=sum(1 for e in embeddings if e))
+
     created = 0
     failed = 0
 
     for i, data in enumerate(FAQ_ENTRIES):
         try:
-            # Rate limit: delay between requests
-            if i > 0:
-                await asyncio.sleep(1.5)  # 1.5s delay between embeddings
-
-            # Generate embedding for answer
-            embedding = await get_text_embedding(data["answer"])
+            embedding = embeddings[i] if i < len(embeddings) else None
 
             entry = FAQEntry(
                 id=data["id"],

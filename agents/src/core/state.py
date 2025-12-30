@@ -280,6 +280,53 @@ class StateManager:
         """Set user's execution mode."""
         await self.set_session(user_id, {"mode": mode})
 
+    # ==================== Profile & Context Methods ====================
+
+    TTL_PROFILE = 300   # 5 minutes
+    TTL_CONTEXT = 60    # 1 minute
+
+    async def get_user_profile(self, user_id: int) -> Optional[Dict]:
+        """Get user profile with caching."""
+        if not user_id:
+            return None
+        return await self.get(
+            "user_profiles",
+            str(user_id),
+            ttl_seconds=self.TTL_PROFILE
+        )
+
+    async def set_user_profile(self, user_id: int, data: Dict):
+        """Update user profile."""
+        if not user_id:
+            return
+        await self.set(
+            "user_profiles",
+            str(user_id),
+            data,
+            ttl_seconds=self.TTL_PROFILE
+        )
+
+    async def get_work_context(self, user_id: int) -> Optional[Dict]:
+        """Get work context with short TTL caching."""
+        if not user_id:
+            return None
+        return await self.get(
+            "user_contexts",
+            str(user_id),
+            ttl_seconds=self.TTL_CONTEXT
+        )
+
+    async def set_work_context(self, user_id: int, data: Dict):
+        """Update work context."""
+        if not user_id:
+            return
+        await self.set(
+            "user_contexts",
+            str(user_id),
+            data,
+            ttl_seconds=self.TTL_CONTEXT
+        )
+
     # ==================== Conversation Methods ====================
 
     async def get_conversation(self, user_id: int) -> List[Dict]:
