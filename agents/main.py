@@ -507,6 +507,75 @@ def format_error_message(error: str) -> str:
     return "❌ Sorry, something went wrong. Please try again."
 
 
+# Simple greeting patterns for fast path
+SIMPLE_CHAT_PATTERNS = {
+    "hi", "hello", "hey", "hola", "yo", "sup", "hii", "hiii",
+    "good morning", "good afternoon", "good evening", "good night",
+    "thanks", "thank you", "thx", "ty",
+    "bye", "goodbye", "see you", "cya",
+    "ok", "okay", "k", "yes", "no", "yep", "nope", "yeah", "nah",
+    "how are you", "how r u", "whats up", "what's up", "wassup",
+    "gm", "gn", "gg",
+}
+
+
+def is_simple_chat(text: str) -> bool:
+    """Check if message is simple chat (greetings, thanks, etc.)."""
+    normalized = text.lower().strip().rstrip("!?.,:;")
+    return normalized in SIMPLE_CHAT_PATTERNS or len(text) <= 10
+
+
+async def _run_chat_fast(
+    text: str,
+    user: dict,
+    user_id: int,
+) -> str:
+    """Fast path for simple chat - direct LLM without tools.
+
+    ~0.5-1s vs 3-8s for full agentic loop.
+    """
+    from src.services.llm import get_llm_client
+    from src.core.state import get_state_manager
+    import structlog
+
+    logger = structlog.get_logger()
+    logger.info("chat_fast_path", user_id=user_id, text_len=len(text))
+
+    llm = get_llm_client()
+    state = get_state_manager()
+
+    # Get recent conversation for context (last 6 messages)
+    messages = []
+    if user_id:
+        full_history = await state.get_conversation(user_id)
+        messages = full_history[-6:] if len(full_history) > 6 else full_history
+
+    messages.append({"role": "user", "content": text})
+
+    system = """Your name is AI4U.now Bot. You are friendly and helpful.
+Keep responses brief for casual chat. Be natural and conversational."""
+
+    response = await llm.create_message(
+        messages=messages,
+        system=system,
+        model="kiro-claude-opus-4-5-agentic",
+    )
+
+    # Extract text from response
+    result = ""
+    if hasattr(response, "content"):
+        for block in response.content:
+            if hasattr(block, "text"):
+                result += block.text
+
+    # Save to conversation history
+    if user_id and result:
+        messages.append({"role": "assistant", "content": result})
+        await state.save_conversation(user_id, messages[-10:])  # Keep last 10
+
+    return result or "👋"
+
+
 async def _run_simple(
     text: str,
     user: dict,
@@ -764,22 +833,32 @@ async def process_message(
                             model="kiro-claude-opus-4-5-agentic"
                         )
                 else:
-                    # CHAT intent - use Haiku for fast, cheap responses
-                    response = await _run_simple(
-                        text, user, chat_id, progress_msg_id, update_progress,
-                        model="kiro-claude-opus-4-5-agentic"
-                    )
+                    # CHAT intent - use fast path for simple messages
+                    if is_simple_chat(text):
+                        # Fast path: direct LLM without tools (~0.5-1s)
+                        response = await _run_chat_fast(text, user, user_id)
+                    else:
+                        # Complex chat: use full agentic loop with tools
+                        response = await _run_simple(
+                            text, user, chat_id, progress_msg_id, update_progress,
+                            model="kiro-claude-opus-4-5-agentic"
+                        )
 
         elif mode == "routed":
             # Route to best skill
             response = await _run_routed(text, user, chat_id, progress_msg_id)
 
         else:
-            # Default: simple mode - use Haiku for fast, cheap responses
-            response = await _run_simple(
-                text, user, chat_id, progress_msg_id, update_progress,
-                model="kiro-claude-opus-4-5-agentic"
-            )
+            # Default: simple mode - use fast path for simple messages
+            if is_simple_chat(text):
+                # Fast path: direct LLM without tools (~0.5-1s)
+                response = await _run_chat_fast(text, user, user_id)
+            else:
+                # Complex chat: use full agentic loop with tools
+                response = await _run_simple(
+                    text, user, chat_id, progress_msg_id, update_progress,
+                    model="kiro-claude-opus-4-5-agentic"
+                )
 
         # Success reaction (Telegram only)
         if is_telegram and message_id:
@@ -1610,6 +1689,22 @@ class TelegramChatAgent:
             from src.core.state import get_state_manager
             state = get_state_manager()
             await state.warm()
+
+            # Pre-warm LLM client to establish ai4u.now proxy connection
+            # This prevents "unknown provider" error on first user request
+            from src.services.llm import get_llm_client
+            llm = get_llm_client()
+            try:
+                # Make a minimal API call to warm the connection
+                llm.chat(
+                    messages=[{"role": "user", "content": "ping"}],
+                    max_tokens=5,
+                    timeout=10.0
+                )
+                logger.info("llm_warm_success", model=llm.model)
+            except Exception as llm_err:
+                logger.warning("llm_warm_failed", error=str(llm_err)[:100])
+
             logger.info("cache_warming_done")
         except Exception as e:
             logger.warning("cache_warming_failed", error=str(e))
