@@ -476,6 +476,113 @@ firestore/
 | `conversations` | 3072 | Chat history |
 | `errors` | 3072 | Error pattern matching |
 
+## Module Structure (Post-Refactor)
+
+```
+agents/
+├── main.py                          # Modal app entry, route includes (~150 lines)
+├── api/                             # FastAPI layer
+│   ├── __init__.py
+│   ├── app.py                       # App factory, middleware
+│   ├── dependencies.py              # Auth, rate limiting, webhook verification
+│   └── routes/
+│       ├── health.py                # /health endpoint
+│       ├── telegram.py              # /webhook/telegram
+│       ├── github.py                # /webhook/github
+│       ├── skills.py                # /api/skill, /api/skills
+│       └── reports.py               # /api/reports
+├── commands/                        # Command handling layer
+│   ├── base.py                      # CommandRouter with decorator pattern
+│   ├── router.py                    # Global command_router instance
+│   ├── user.py                      # /start, /help, /status, /tier, /clear, /cancel
+│   ├── skills.py                    # /skills, /skill, /mode, /suggest, /task
+│   ├── admin.py                     # /grant, /revoke, /faq, /admin
+│   ├── personalization.py           # /profile, /context, /macro, /macros, /activity
+│   ├── developer.py                 # /traces, /trace, /circuits, /improve
+│   └── reminders.py                 # /remind, /reminders
+├── validators/                      # Input validation
+│   └── input.py                     # InputValidator: skill names, text, FAQ patterns
+├── config/                          # Configuration
+│   └── env.py                       # Admin validation, env helpers
+├── src/
+│   ├── core/                        # Core framework
+│   │   ├── state.py                 # StateManager (L1 cache + L2 Firebase)
+│   │   ├── resilience.py            # Circuit breakers (7)
+│   │   ├── trace.py                 # TraceContext
+│   │   └── improvement.py           # Self-improvement proposals
+│   ├── services/
+│   │   ├── firebase/                # Firebase domain services
+│   │   │   ├── _client.py           # Thread-safe Firebase init (lru_cache)
+│   │   │   ├── _circuit.py          # @with_firebase_circuit decorator
+│   │   │   ├── users.py             # User CRUD
+│   │   │   ├── tasks.py             # Task queue
+│   │   │   ├── tiers.py             # User tier system
+│   │   │   ├── faq.py               # FAQ management
+│   │   │   ├── reports.py           # Firebase Storage reports
+│   │   │   ├── reminders.py         # Reminder scheduling
+│   │   │   ├── local_tasks.py       # Local skill task queue
+│   │   │   ├── ii_framework.py      # Temporal entities, decisions
+│   │   │   ├── tokens.py            # OAuth tokens
+│   │   │   └── __init__.py          # Backward compatibility re-exports
+│   │   ├── llm.py                   # Claude API client
+│   │   ├── telegram.py              # Telegram Bot API
+│   │   └── gemini.py                # Gemini API (vision, grounding, thinking)
+│   ├── skills/                      # Skill system
+│   │   └── registry.py              # SkillRegistry with progressive disclosure
+│   └── tools/                       # Tool implementations
+│       ├── web_search.py            # Exa + Tavily search
+│       └── code_exec.py             # Python execution
+└── skills/                          # 55 skill info.md files
+```
+
+### Layer Responsibilities
+
+| Layer | Responsibility |
+|-------|----------------|
+| `api/` | HTTP routing, middleware, request/response |
+| `commands/` | Telegram command handling, permission checks |
+| `validators/` | Input sanitization, security constraints |
+| `src/core/` | Framework: state, circuits, tracing |
+| `src/services/` | External integrations: Firebase, LLM, APIs |
+| `src/skills/` | Skill loading and routing |
+| `src/tools/` | Tool implementations for agentic loop |
+
+### Command Router Pattern
+
+Commands use a decorator-based registration pattern:
+
+```python
+from commands.router import command_router
+
+@command_router.command(
+    name="/mycommand",
+    description="What it does",
+    permission="user",  # guest|user|developer|admin
+    category="general"
+)
+async def my_command(args: str, user: dict, chat_id: int) -> str:
+    return "Response"
+```
+
+### Circuit Breaker Decorator
+
+Firebase operations use a reusable decorator:
+
+```python
+from src.services.firebase._circuit import with_firebase_circuit
+
+@with_firebase_circuit(open_return=None)
+async def get_user(user_id: int):
+    db = get_db()
+    doc = db.collection("users").document(str(user_id)).get()
+    return doc.to_dict() if doc.exists else None
+
+@with_firebase_circuit(raise_on_open=True)
+async def create_user(user_id: int, data: dict):
+    db = get_db()
+    db.collection("users").document(str(user_id)).set(data)
+```
+
 ## Cost Estimate
 
 | Component | Monthly Cost |

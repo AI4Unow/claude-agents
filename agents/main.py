@@ -88,436 +88,21 @@ async def notify_task_queued(user_id: int, skill_name: str, task_id: str):
         pass  # Non-blocking, log errors elsewhere
 
 
-def create_web_app():
-    """Create FastAPI app (called inside Modal container)."""
-    from fastapi import FastAPI, Request, HTTPException, Header, Depends
-    from typing import Optional
-    from datetime import timezone
-    from slowapi import Limiter, _rate_limit_exceeded_handler
-    from slowapi.util import get_remote_address
-    from slowapi.errors import RateLimitExceeded
-    import hmac
+# ==================== FastAPI App Setup ====================
 
-    web_app = FastAPI()
+# Import web_app and include all routers
+from api.app import web_app
+from api.routes import health, telegram, skills, reports, admin
 
-    # Initialize rate limiter
-    limiter = Limiter(key_func=get_remote_address)
-    web_app.state.limiter = limiter
-    web_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Include all route modules
+web_app.include_router(health.router)
+web_app.include_router(telegram.router)
+web_app.include_router(skills.router)
+web_app.include_router(reports.router)
+web_app.include_router(admin.router)
 
-    async def verify_admin_token(x_admin_token: str = Header(None)):
-        """Verify admin token from X-Admin-Token header."""
-        expected_token = os.environ.get("ADMIN_TOKEN")
-        if not expected_token:
-            raise HTTPException(status_code=500, detail="Admin token not configured")
-        if not x_admin_token or x_admin_token != expected_token:
-            raise HTTPException(status_code=401, detail="Invalid or missing admin token")
-        return True
 
-    async def verify_telegram_webhook(request: Request) -> bool:
-        """Verify Telegram webhook using secret token (timing-safe comparison).
-
-        SECURITY: Fail-closed - requires secret to be configured in production.
-        Set TELEGRAM_WEBHOOK_SECRET="" explicitly to disable (not recommended).
-        """
-        secret_token = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
-        if secret_token is None:
-            # Not configured - reject in production (fail-closed)
-            import structlog
-            structlog.get_logger().warning("telegram_webhook_secret_not_configured")
-            raise HTTPException(status_code=500, detail="Webhook verification not configured")
-
-        if secret_token == "":
-            # Explicitly disabled (empty string) - allow but log warning
-            return True
-
-        header_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-        return hmac.compare_digest(secret_token, header_token)
-
-    @web_app.get("/health")
-    async def health():
-        """Health check endpoint with circuit status."""
-        from src.core.resilience import get_circuit_stats
-
-        circuits = get_circuit_stats()
-        any_open = any(c["state"] == "open" for c in circuits.values())
-
-        return {
-            "status": "degraded" if any_open else "healthy",
-            "agent": "claude-agents",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "version": "1.0.0",
-            "circuits": circuits,
-        }
-
-    @web_app.get("/api/traces")
-    async def list_traces_endpoint(
-        user_id: Optional[int] = None,
-        status: Optional[str] = None,
-        limit: int = 20,
-        _: bool = Depends(verify_admin_token)
-    ):
-        """List execution traces for debugging."""
-        from src.core.trace import list_traces
-
-        try:
-            traces = await list_traces(user_id=user_id, status=status, limit=limit)
-            return {
-                "traces": [t.to_dict() for t in traces],
-                "count": len(traces),
-            }
-        except Exception as e:
-            return {"error": str(e)}, 500
-
-    @web_app.get("/api/traces/{trace_id}")
-    async def get_trace_endpoint(trace_id: str, _: bool = Depends(verify_admin_token)):
-        """Get single trace by ID."""
-        from src.core.trace import get_trace
-
-        trace = await get_trace(trace_id)
-        if trace:
-            return trace.to_dict()
-        return {"error": "Trace not found"}, 404
-
-    @web_app.get("/api/circuits")
-    async def get_circuits_endpoint(_: bool = Depends(verify_admin_token)):
-        """Get circuit breaker status for all services."""
-        from src.core.resilience import get_circuit_stats
-        return get_circuit_stats()
-
-    @web_app.post("/api/circuits/reset")
-    async def reset_circuits_endpoint(_: bool = Depends(verify_admin_token)):
-        """Reset all circuit breakers (admin only)."""
-        from src.core.resilience import reset_all_circuits
-        reset_all_circuits()
-        return {"message": "All circuits reset"}
-
-    @web_app.post("/webhook/telegram")
-    @limiter.limit("30/minute")  # 30 requests per minute per IP
-    async def telegram_webhook(request: Request):
-        """Handle Telegram webhook updates."""
-        import structlog
-        logger = structlog.get_logger()
-
-        # Verify webhook signature
-        if not await verify_telegram_webhook(request):
-            logger.warning("telegram_webhook_invalid_signature")
-            raise HTTPException(status_code=401, detail="Invalid webhook token")
-
-        try:
-            update = await request.json()
-            logger.info("telegram_update", update_id=update.get("update_id"))
-
-            # Check for callback query (button press)
-            callback = update.get("callback_query")
-            if callback:
-                return await handle_callback(callback)
-
-            # Extract message
-            message = update.get("message", {})
-            chat_id = message.get("chat", {}).get("id")
-            text = message.get("text", "")
-            user = message.get("from", {})
-
-            if not chat_id:
-                return {"ok": True}
-
-            # Handle voice messages
-            voice = message.get("voice")
-            if voice:
-                file_id = voice.get("file_id")
-                duration = voice.get("duration", 0)
-                response = await handle_voice_message(file_id, duration, user, chat_id)
-                if response:
-                    await send_telegram_message(chat_id, response)
-                return {"ok": True}
-
-            # Handle photo messages
-            photo = message.get("photo")
-            if photo:
-                # Photo array is sorted by size, get largest (up to 1280px per validation)
-                file_id = photo[-1].get("file_id")
-                caption = message.get("caption", "")
-                response = await handle_image_message(file_id, caption, user, chat_id)
-                if response:
-                    await send_telegram_message(chat_id, response)
-                return {"ok": True}
-
-            # Handle document messages
-            document = message.get("document")
-            if document:
-                file_id = document.get("file_id")
-                file_name = document.get("file_name", "document")
-                mime_type = document.get("mime_type", "")
-                caption = message.get("caption", "")
-                response = await handle_document_message(
-                    file_id, file_name, mime_type, caption, user, chat_id
-                )
-                if response:
-                    await send_telegram_message(chat_id, response)
-                return {"ok": True}
-
-            # Skip if no text
-            if not text:
-                return {"ok": True}
-
-            logger.info("processing_message", chat_id=chat_id, text_len=len(text))
-
-            # Get message_id for reactions
-            message_id = message.get("message_id")
-
-            # Handle commands
-            if text.startswith("/"):
-                response = await handle_command(text, user, chat_id)
-            else:
-                response = await process_message(text, user, chat_id, message_id)
-
-            # Response may be None if already sent (e.g., keyboard)
-            if response:
-                logger.info("sending_response", chat_id=chat_id, response_len=len(response))
-                await send_telegram_message(chat_id, response)
-
-            return {"ok": True}
-
-        except Exception as e:
-            logger.error("webhook_error", error=str(e))
-            return {"ok": False, "error": str(e)}
-
-    @web_app.post("/webhook/github")
-    async def github_webhook(request: Request):
-        """Handle GitHub webhook events."""
-        import structlog
-        logger = structlog.get_logger()
-
-        try:
-            event = request.headers.get("X-GitHub-Event", "push")
-            payload = await request.json()
-
-            logger.info("github_webhook", event=event)
-
-            task = {
-                "type": "github",
-                "payload": {
-                    "action": f"handle_{event}",
-                    "event": event,
-                    "data": payload
-                }
-            }
-
-            from src.agents.github_automation import process_github_task
-            result = await process_github_task(task)
-            return {"ok": True, "result": result}
-
-        except Exception as e:
-            logger.error("github_webhook_error", error=str(e))
-            return {"ok": False, "error": str(e)}
-
-    @web_app.post("/api/content")
-    async def content_api(request: Request):
-        """Content Agent HTTP API endpoint."""
-        import structlog
-        logger = structlog.get_logger()
-
-        try:
-            payload = await request.json()
-            logger.info("content_api", action=payload.get("action"))
-
-            task = {"type": "content", "payload": payload}
-
-            from src.agents.content_generator import process_content_task
-            result = await process_content_task(task)
-            return {"ok": True, "result": result}
-
-        except Exception as e:
-            logger.error("content_api_error", error=str(e))
-            return {"ok": False, "error": str(e)}
-
-    @web_app.post("/api/skill")
-    async def skill_api(request: Request):
-        """II Framework Skill API endpoint.
-
-        Invoke Modal-deployed skills from Claude Code.
-
-        Request body:
-        {
-            "skill": "planning",
-            "task": "Create a plan for user authentication",
-            "context": {"project": "my-app"},  # optional
-            "mode": "simple"  # simple|routed|orchestrated|chained|evaluated
-        }
-        """
-        import structlog
-        import time
-        from src.services.firebase import create_local_task
-        logger = structlog.get_logger()
-
-        try:
-            payload = await request.json()
-            skill_name = payload.get("skill")
-            task = payload.get("task", "")
-            context = payload.get("context", {})
-            mode = payload.get("mode", "simple")
-            user_id = context.get("user_id", 0)
-
-            logger.info("skill_api", skill=skill_name, mode=mode, task_len=len(task))
-
-            # Check if local skill - queue to Firebase instead of executing
-            if is_local_skill(skill_name):
-                task_id = await create_local_task(
-                    skill=skill_name,
-                    task=task,
-                    user_id=user_id
-                )
-
-                logger.info("local_skill_queued", skill=skill_name, task_id=task_id)
-
-                # Notify user if we have user_id
-                if user_id:
-                    await notify_task_queued(user_id, skill_name, task_id)
-
-                return {
-                    "ok": True,
-                    "queued": True,
-                    "task_id": task_id,
-                    "skill": skill_name,
-                    "message": f"Skill '{skill_name}' queued for local execution"
-                }
-
-            start = time.time()
-
-            if mode == "simple":
-                # Direct skill execution
-                result = await execute_skill_simple(skill_name, task, context)
-            elif mode == "routed":
-                # Use router to find best skill
-                result = await execute_skill_routed(task, context)
-            elif mode == "orchestrated":
-                # Use orchestrator for complex tasks
-                result = await execute_skill_orchestrated(task, context)
-            elif mode == "chained":
-                # Execute skill chain
-                skills = payload.get("skills", [skill_name])
-                result = await execute_skill_chained(skills, task)
-            elif mode == "evaluated":
-                # Execute with quality evaluation
-                result = await execute_skill_evaluated(skill_name, task)
-            else:
-                return {"ok": False, "error": f"Unknown mode: {mode}"}
-
-            duration_ms = int((time.time() - start) * 1000)
-
-            logger.info("skill_complete", skill=skill_name, mode=mode, duration_ms=duration_ms)
-
-            return {
-                "ok": True,
-                "result": result,
-                "skill": skill_name,
-                "mode": mode,
-                "duration_ms": duration_ms
-            }
-
-        except Exception as e:
-            logger.error("skill_api_error", error=str(e))
-            return {"ok": False, "error": str(e)}
-
-    @web_app.get("/api/skills")
-    async def list_skills():
-        """List all available skills."""
-        from src.skills.registry import get_registry
-
-        registry = get_registry()
-        summaries = registry.discover()
-
-        return {
-            "ok": True,
-            "skills": [
-                {
-                    "name": s.name,
-                    "description": s.description,
-                    "deployment": s.deployment
-                }
-                for s in summaries
-            ],
-            "count": len(summaries)
-        }
-
-    @web_app.get("/api/task/{task_id}")
-    async def get_task_status(task_id: str):
-        """Get local task status."""
-        from src.services.firebase import get_task_result
-
-        task = await get_task_result(task_id)
-        if not task:
-            return {"ok": False, "error": "Task not found"}
-
-        return {
-            "ok": True,
-            "task": {
-                "id": task["id"],
-                "skill": task.get("skill"),
-                "status": task.get("status"),
-                "result": task.get("result"),
-                "error": task.get("error"),
-                "created_at": task.get("created_at"),
-                "completed_at": task.get("completed_at")
-            }
-        }
-
-    # ==================== Reports API ====================
-
-    @web_app.get("/api/reports")
-    async def list_reports(user_id: int):
-        """List reports for a user."""
-        from src.services.firebase import list_user_reports
-
-        if not user_id:
-            return {"ok": False, "error": "user_id required"}
-
-        reports = await list_user_reports(user_id)
-        return {
-            "ok": True,
-            "reports": reports,
-            "count": len(reports)
-        }
-
-    @web_app.get("/api/reports/{report_id}")
-    async def get_report(report_id: str, user_id: int):
-        """Get report download URL."""
-        from src.services.firebase import get_report_url
-
-        if not user_id:
-            return {"ok": False, "error": "user_id required"}
-
-        url = await get_report_url(user_id, report_id)
-        if not url:
-            return {"ok": False, "error": "Report not found or access denied"}
-
-        return {
-            "ok": True,
-            "report_id": report_id,
-            "download_url": url
-        }
-
-    @web_app.get("/api/reports/{report_id}/content")
-    async def get_report_content_api(report_id: str, user_id: int):
-        """Get report content directly."""
-        from src.services.firebase import get_report_content
-
-        if not user_id:
-            return {"ok": False, "error": "user_id required"}
-
-        content = await get_report_content(user_id, report_id)
-        if not content:
-            return {"ok": False, "error": "Report not found or access denied"}
-
-        return {
-            "ok": True,
-            "report_id": report_id,
-            "content": content
-        }
-
-    return web_app
-
+# ==================== Skill Execution Functions ====================
 
 async def execute_skill_simple(skill_name: str, task: str, context: dict) -> str:
     """Execute a skill directly."""
@@ -645,822 +230,6 @@ async def execute_skill_evaluated(skill_name: str, task: str) -> str:
 
     return result.final_output
 
-
-async def handle_command(command: str, user: dict, chat_id: int) -> str:
-    """Handle bot commands including skill terminal commands."""
-    parts = command.split(maxsplit=1)
-    cmd = parts[0].lower()
-    args = parts[1] if len(parts) > 1 else ""
-
-    if cmd == "/start":
-        return f"""Hello {user.get('first_name', 'there')}! 👋
-
-I'm <b>AI4U.now Bot</b> — your unified AI assistant powered by multiple AI models (Gemini, Claude, GPT) through a single interface.
-
-<b>🤖 AI Models:</b>
-• Gemini 2.5/3.0 (fast, multimodal)
-• Claude Opus/Sonnet (reasoning, coding)
-• GPT-5 series (general, creative)
-
-<b>🛠️ 50+ Skills:</b>
-• <b>Research:</b> Deep research, web grounding, fact-checking
-• <b>Development:</b> Backend, frontend, mobile, databases
-• <b>Design:</b> UI/UX, canvas design, image generation
-• <b>Documents:</b> PDF, Word, Excel, PowerPoint processing
-• <b>Media:</b> Video download, image enhance, processing
-• <b>Automation:</b> Social media, payments, DevOps
-
-<b>⚡ Quick Actions:</b>
-/translate, /summarize, /rewrite
-
-<b>📍 Commands:</b>
-/skills - Browse all skills
-/help - Full command list
-/status - Check your status
-
-Just send a message to chat, or use /skills to explore!"""
-
-    elif cmd == "/help":
-        # Get user tier for context-aware help
-        from src.core.state import get_state_manager
-        from src.services.firebase import has_permission
-        state = get_state_manager()
-        tier = await state.get_user_tier_cached(user.get("id"))
-
-        # Base commands (everyone)
-        help_text = [
-            "<b>📖 Commands</b>\n",
-            "<b>Basic:</b>",
-            "/start - Welcome message",
-            "/help - This help text",
-            "/status - Check status and tier",
-            "/tier - Check your tier",
-            "/clear - Clear conversation",
-        ]
-
-        # Skill commands (all users)
-        help_text.extend([
-            "",
-            "<b>Skills:</b>",
-            "/skills - Browse skills (menu)",
-            "/skill &lt;name&gt; &lt;task&gt; - Execute skill",
-            "/mode &lt;simple|routed|auto&gt; - Set mode",
-            "/task &lt;id&gt; - Check task status",
-        ])
-
-        # Quick actions
-        help_text.extend([
-            "",
-            "<b>Quick Actions:</b>",
-            "/translate &lt;text&gt; - Translate to English",
-            "/summarize &lt;text&gt; - Summarize text",
-            "/rewrite &lt;text&gt; - Improve text",
-        ])
-
-        # Personalization commands (all users)
-        help_text.extend([
-            "",
-            "<b>Personalization:</b>",
-            "/profile - View/edit your profile",
-            "/context - View work context",
-            "/macro - Manage personal macros",
-            "/activity - View recent activity",
-            "/suggest - Get personalized suggestions",
-            "/forget - Delete all personal data",
-        ])
-
-        # Developer+ commands
-        if has_permission(tier, "developer"):
-            help_text.extend([
-                "",
-                "<b>Developer:</b>",
-                "/traces [limit] - Recent traces",
-                "/trace &lt;id&gt; - Trace details",
-                "/circuits - Circuit breaker status",
-            ])
-
-        # Admin commands
-        admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
-        if str(user.get("id")) == str(admin_id):
-            help_text.extend([
-                "",
-                "<b>Admin:</b>",
-                "/grant &lt;user_id&gt; &lt;tier&gt; - Grant tier",
-                "/revoke &lt;user_id&gt; - Revoke tier",
-                "/admin reset &lt;circuit&gt; - Reset circuit",
-                "/remind &lt;time&gt; &lt;msg&gt; - Set reminder",
-                "/reminders - List reminders",
-            ])
-
-        # Tier info
-        help_text.append(f"\n<i>Your tier: {tier}</i>")
-
-        return "\n".join(help_text)
-
-    elif cmd == "/status":
-        from src.core.state import get_state_manager
-        from src.services.firebase import get_rate_limit
-
-        state = get_state_manager()
-        user_id = user.get("id")
-
-        tier = await state.get_user_tier_cached(user_id)
-        mode = await state.get_user_mode(user_id)
-        limit = get_rate_limit(tier)
-
-        lines = [
-            "<b>📊 Status</b>\n",
-            f"<b>Tier:</b> {tier}",
-            f"<b>Mode:</b> {mode}",
-            f"<b>Rate limit:</b> {limit} req/min",
-        ]
-
-        # Admin sees system status
-        admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
-        if str(user_id) == str(admin_id):
-            from src.core.resilience import get_circuit_stats
-            circuits = get_circuit_stats()
-            open_count = sum(1 for c in circuits.values() if c.get("state") == "open")
-
-            lines.extend([
-                "",
-                "<b>System:</b>",
-                f"Circuits: {open_count}/{len(circuits)} open",
-                f"Cache size: {len(state._l1_cache)}",
-            ])
-
-        return "\n".join(lines)
-
-    elif cmd == "/skills":
-        # Show inline keyboard with skill categories
-        await send_skills_menu(chat_id)
-        return None  # Message already sent
-
-    elif cmd == "/skill":
-        if not args:
-            return "Usage: /skill &lt;name&gt; &lt;task&gt;\nExample: /skill planning Create auth system"
-
-        skill_parts = args.split(maxsplit=1)
-        skill_name = skill_parts[0]
-        task = skill_parts[1] if len(skill_parts) > 1 else ""
-
-        if not task:
-            return f"Please provide a task for skill '{skill_name}'.\nUsage: /skill {skill_name} &lt;task&gt;"
-
-        # Validate skill exists
-        from src.skills.registry import get_registry
-        registry = get_registry()
-        skill = registry.get_full(skill_name)
-
-        if not skill:
-            # Suggest similar skills
-            summaries = registry.discover()
-            names = [s.name for s in summaries]
-            suggestions = [n for n in names if n.startswith(skill_name[:3]) or skill_name in n]
-
-            if suggestions:
-                return f"Skill '{skill_name}' not found. Did you mean: {', '.join(suggestions[:3])}?"
-            return f"Skill '{skill_name}' not found. Use /skills to see available skills."
-
-        # Get user's preferred mode from StateManager
-        from src.core.state import get_state_manager
-        state = get_state_manager()
-        mode = await state.get_user_mode(user.get("id"))
-
-        import time
-        start = time.time()
-        result = await execute_skill_simple(skill_name, task, {"user": user})
-        duration_ms = int((time.time() - start) * 1000)
-
-        from src.services.telegram import format_skill_result
-        return format_skill_result(skill_name, result, duration_ms)
-
-    elif cmd == "/mode":
-        valid_modes = ["simple", "routed", "auto"]  # Updated: replaced "evaluated" with "auto"
-        from src.core.state import get_state_manager
-        state = get_state_manager()
-        if args not in valid_modes:
-            current = await state.get_user_mode(user.get("id"))
-            return (
-                f"Current mode: <b>{current}</b>\n\n"
-                "<b>Modes:</b>\n"
-                "• <b>simple</b> - Direct LLM response\n"
-                "• <b>routed</b> - Route to best skill\n"
-                "• <b>auto</b> - Smart detection (recommended)\n\n"
-                f"Usage: /mode <{'|'.join(valid_modes)}>"
-            )
-
-        await state.set_user_mode(user.get("id"), args)
-        return f"Execution mode set to: <b>{args}</b>"
-
-    elif cmd == "/cancel":
-        from src.core.state import get_state_manager
-        state = get_state_manager()
-        await state.clear_pending_skill(user.get("id"))
-        return "Operation cancelled."
-
-    elif cmd == "/clear":
-        from src.core.state import get_state_manager
-        state = get_state_manager()
-        await state.clear_conversation(user.get("id"))
-        return "Conversation history cleared."
-
-    elif cmd == "/translate" and args:
-        from src.agents.content_generator import process_content_task
-        task = {"payload": {"action": "translate", "text": args, "target": "en"}}
-        result = await process_content_task(task)
-        return result.get("message", result.get("translation", "Translation failed"))
-
-    elif cmd == "/summarize" and args:
-        from src.agents.content_generator import process_content_task
-        task = {"payload": {"action": "summarize", "text": args}}
-        result = await process_content_task(task)
-        return result.get("message", result.get("summary", "Summary failed"))
-
-    elif cmd == "/rewrite" and args:
-        from src.agents.content_generator import process_content_task
-        task = {"payload": {"action": "rewrite", "text": args}}
-        result = await process_content_task(task)
-        return result.get("message", result.get("rewritten", "Rewrite failed"))
-
-    elif cmd in ["/translate", "/summarize", "/rewrite"]:
-        return f"Usage: {cmd} &lt;text&gt;"
-
-    elif cmd == "/remind":
-        # Admin only - check permission
-        admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
-        if str(user.get("id")) != str(admin_id):
-            return "⛔ This command is admin only."
-
-        if not args:
-            return (
-                "Usage: /remind <time> <message>\n"
-                "Examples:\n"
-                "  /remind 1h Check the deployment\n"
-                "  /remind 30m Call mom\n"
-                "  /remind 2d Review code"
-            )
-
-        # Parse time and message
-        remind_parts = args.split(maxsplit=1)
-        if len(remind_parts) < 2:
-            return "Please provide both time and message."
-
-        time_str, message = remind_parts
-        due_at = parse_reminder_time(time_str)
-
-        if not due_at:
-            return f"Invalid time format: {time_str}. Use: 30m, 2h, 1d"
-
-        # Store reminder
-        from src.services.firebase import create_reminder
-        reminder_id = await create_reminder(
-            user_id=user.get("id"),
-            chat_id=chat_id,
-            message=message,
-            due_at=due_at
-        )
-
-        return f"⏰ Reminder set for {due_at.strftime('%Y-%m-%d %H:%M UTC')}\nID: {reminder_id[:8]}..."
-
-    elif cmd == "/reminders":
-        # Admin only - check permission
-        admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
-        if str(user.get("id")) != str(admin_id):
-            return "⛔ This command is admin only."
-
-        from src.services.firebase import get_user_reminders
-
-        reminders = await get_user_reminders(user.get("id"), limit=10)
-
-        if not reminders:
-            return "No pending reminders. Use /remind to create one."
-
-        lines = ["<b>Your Reminders:</b>\n"]
-        for r in reminders:
-            due = r.get("due_at")
-            if hasattr(due, "strftime"):
-                due_str = due.strftime("%m/%d %H:%M")
-            else:
-                due_str = str(due)[:16]
-            msg = r.get("message", "")[:30]
-            lines.append(f"• {due_str} - {msg}...")
-
-        return "\n".join(lines)
-
-    elif cmd == "/grant":
-        # Admin only
-        admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
-        if str(user.get("id")) != str(admin_id):
-            return "Admin only command."
-
-        parts = args.split()
-        if len(parts) != 2:
-            return "Usage: /grant &lt;telegram_id&gt; &lt;user|developer&gt;"
-
-        try:
-            target_id = int(parts[0])
-        except ValueError:
-            return "Invalid Telegram ID. Must be a number."
-
-        tier = parts[1].lower()
-        if tier not in ["user", "developer"]:
-            return "Tier must be 'user' or 'developer'."
-
-        from src.services.firebase import set_user_tier
-        success = await set_user_tier(target_id, tier, user.get("id"))
-
-        if success:
-            from src.core.state import get_state_manager
-            state = get_state_manager()
-            await state.invalidate_user_tier(target_id)
-            return f"Granted <b>{tier}</b> tier to user {target_id}"
-        else:
-            return "Failed to grant tier. Check logs."
-
-    elif cmd == "/revoke":
-        # Admin only
-        admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
-        if str(user.get("id")) != str(admin_id):
-            return "Admin only command."
-
-        if not args:
-            return "Usage: /revoke &lt;telegram_id&gt;"
-
-        try:
-            target_id = int(args.strip())
-        except ValueError:
-            return "Invalid Telegram ID."
-
-        from src.services.firebase import remove_user_tier
-        success = await remove_user_tier(target_id)
-
-        if success:
-            from src.core.state import get_state_manager
-            state = get_state_manager()
-            await state.invalidate_user_tier(target_id)
-            return f"Revoked access for user {target_id}. Now guest tier."
-        else:
-            return "Failed to revoke tier."
-
-    elif cmd == "/tier":
-        from src.core.state import get_state_manager
-        from src.services.firebase import get_rate_limit
-        state = get_state_manager()
-        tier = await state.get_user_tier_cached(user.get("id"))
-        limit = get_rate_limit(tier)
-        return f"Your tier: <b>{tier}</b>\nRate limit: {limit} requests/min"
-
-    elif cmd == "/traces":
-        # Developer+ only: list recent traces
-        from src.core.state import get_state_manager
-        from src.services.firebase import has_permission
-        from src.core.trace import list_traces
-        from src.services.telegram import format_traces_list
-
-        state = get_state_manager()
-        tier = await state.get_user_tier_cached(user.get("id"))
-
-        if not has_permission(tier, "developer"):
-            return "Access denied. Developer tier required."
-
-        limit = int(args) if args and args.isdigit() else 10
-        limit = min(limit, 20)
-        traces = await list_traces(limit=limit)
-        return format_traces_list(traces)
-
-    elif cmd == "/trace":
-        # Developer+ only: get trace detail
-        from src.core.state import get_state_manager
-        from src.services.firebase import has_permission
-        from src.core.trace import get_trace
-        from src.services.telegram import format_trace_detail
-
-        state = get_state_manager()
-        tier = await state.get_user_tier_cached(user.get("id"))
-
-        if not has_permission(tier, "developer"):
-            return "Access denied. Developer tier required."
-
-        if not args:
-            return "Usage: /trace <trace_id>"
-
-        trace = await get_trace(args.strip())
-        return format_trace_detail(trace)
-
-    elif cmd == "/circuits":
-        # Developer+ only: show circuit breaker status
-        from src.core.state import get_state_manager
-        from src.services.firebase import has_permission
-        from src.core.resilience import get_circuit_stats
-        from src.services.telegram import format_circuits_status
-
-        state = get_state_manager()
-        tier = await state.get_user_tier_cached(user.get("id"))
-
-        if not has_permission(tier, "developer"):
-            return "Access denied. Developer tier required."
-
-        circuits = get_circuit_stats()
-        return format_circuits_status(circuits)
-
-    elif cmd == "/admin":
-        # Admin only: system control commands
-        from src.core.state import get_state_manager
-        from src.services.firebase import has_permission
-        from src.core.resilience import reset_circuit, reset_all_circuits
-
-        state = get_state_manager()
-        tier = await state.get_user_tier_cached(user.get("id"))
-
-        if not has_permission(tier, "admin"):
-            return "Access denied. Admin tier required."
-
-        if not args:
-            return (
-                "<b>Admin Commands:</b>\n\n"
-                "/admin reset <circuit> - Reset specific circuit\n"
-                "/admin reset all - Reset all circuits"
-            )
-
-        parts = args.split()
-        subcmd = parts[0].lower() if parts else ""
-
-        if subcmd == "reset":
-            if len(parts) < 2:
-                return "Usage: /admin reset <circuit_name|all>"
-
-            target = parts[1].lower()
-            if target == "all":
-                reset_all_circuits()
-                return "All circuits have been reset."
-            else:
-                if reset_circuit(target):
-                    return f"Circuit <b>{target}</b> has been reset."
-                else:
-                    return f"Circuit <b>{target}</b> not found. Available: exa_api, tavily_api, firebase, qdrant, claude_api, telegram_api, gemini_api"
-
-        return "Unknown admin command. Use /admin for help."
-
-    elif cmd == "/faq":
-        # Admin only: manage FAQ entries
-        admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
-        if str(user.get("id")) != str(admin_id):
-            return "Admin only command."
-
-        from src.services.firebase import (
-            get_faq_entries, create_faq_entry, update_faq_entry,
-            delete_faq_entry, FAQEntry
-        )
-        from src.services.qdrant import upsert_faq_embedding, delete_faq_embedding, get_text_embedding
-        from src.core.faq import get_faq_matcher
-
-        parts = args.split(maxsplit=1) if args else []
-        subcmd = parts[0].lower() if parts else ""
-
-        if not subcmd or subcmd == "help":
-            return (
-                "<b>FAQ Commands:</b>\n\n"
-                "/faq list - List all FAQ entries\n"
-                "/faq add &lt;pattern&gt; | &lt;answer&gt; - Add FAQ\n"
-                "/faq edit &lt;id&gt; | &lt;answer&gt; - Update answer\n"
-                "/faq delete &lt;id&gt; - Disable FAQ entry\n"
-                "/faq refresh - Refresh FAQ cache"
-            )
-
-        elif subcmd == "list":
-            entries = await get_faq_entries(enabled_only=False)
-            if not entries:
-                return "No FAQ entries found."
-
-            lines = ["<b>FAQ Entries:</b>\n"]
-            for e in entries[:20]:  # Limit to 20
-                status = "✓" if e.enabled else "✗"
-                pattern_preview = e.patterns[0][:25] if e.patterns else "?"
-                lines.append(f"{status} <code>{e.id}</code>\n   {pattern_preview}...")
-
-            if len(entries) > 20:
-                lines.append(f"\n... and {len(entries) - 20} more")
-
-            return "\n".join(lines)
-
-        elif subcmd == "add":
-            # Format: /faq add <pattern> | <answer>
-            if len(parts) < 2 or "|" not in parts[1]:
-                return "Usage: /faq add &lt;pattern&gt; | &lt;answer&gt;"
-
-            content = parts[1]
-            pipe_idx = content.index("|")
-            pattern = content[:pipe_idx].strip()
-            answer = content[pipe_idx + 1:].strip()
-
-            if not pattern or not answer:
-                return "Both pattern and answer are required."
-
-            # Generate ID from pattern
-            import re
-            faq_id = re.sub(r'[^a-z0-9]+', '-', pattern.lower())[:30]
-
-            # Generate embedding
-            embedding = await get_text_embedding(answer)
-
-            entry = FAQEntry(
-                id=faq_id,
-                patterns=[pattern],
-                answer=answer,
-                category="custom",
-                enabled=True,
-                embedding=embedding
-            )
-
-            success = await create_faq_entry(entry)
-            if success:
-                # Sync to Qdrant if embedding exists
-                if embedding:
-                    await upsert_faq_embedding(faq_id, embedding, answer)
-                get_faq_matcher().invalidate_cache()
-                return f"✓ Created FAQ: <code>{faq_id}</code>"
-            else:
-                return "Failed to create FAQ entry."
-
-        elif subcmd == "edit":
-            # Format: /faq edit <id> | <answer>
-            if len(parts) < 2 or "|" not in parts[1]:
-                return "Usage: /faq edit &lt;id&gt; | &lt;answer&gt;"
-
-            content = parts[1]
-            pipe_idx = content.index("|")
-            faq_id = content[:pipe_idx].strip()
-            new_answer = content[pipe_idx + 1:].strip()
-
-            if not faq_id or not new_answer:
-                return "Both ID and answer are required."
-
-            # Generate new embedding
-            embedding = await get_text_embedding(new_answer)
-
-            updates = {"answer": new_answer}
-            if embedding:
-                updates["embedding"] = embedding
-
-            success = await update_faq_entry(faq_id, updates)
-            if success:
-                # Update Qdrant
-                if embedding:
-                    await upsert_faq_embedding(faq_id, embedding, new_answer)
-                get_faq_matcher().invalidate_cache()
-                return f"✓ Updated FAQ: <code>{faq_id}</code>"
-            else:
-                return f"FAQ entry <code>{faq_id}</code> not found."
-
-        elif subcmd == "delete":
-            if len(parts) < 2:
-                return "Usage: /faq delete &lt;id&gt;"
-
-            faq_id = parts[1].strip()
-            success = await delete_faq_entry(faq_id)
-
-            if success:
-                await delete_faq_embedding(faq_id)
-                get_faq_matcher().invalidate_cache()
-                return f"✓ Disabled FAQ: <code>{faq_id}</code>"
-            else:
-                return f"FAQ entry <code>{faq_id}</code> not found."
-
-        elif subcmd == "refresh":
-            get_faq_matcher().invalidate_cache()
-            return "✓ FAQ cache invalidated. Will refresh on next query."
-
-        else:
-            return "Unknown FAQ command. Use /faq for help."
-
-    elif cmd == "/task":
-        # User+ only: check local task status
-        from src.core.state import get_state_manager
-        from src.services.firebase import has_permission, get_task_result
-        from src.services.telegram import format_task_status
-
-        state = get_state_manager()
-        tier = await state.get_user_tier_cached(user.get("id"))
-
-        if not has_permission(tier, "user"):
-            return "Access denied. User tier required."
-
-        if not args:
-            return "Usage: /task <task_id>"
-
-        task = await get_task_result(args.strip())
-        return format_task_status(task)
-
-    # ==================== Personalization Commands ====================
-
-    elif cmd == "/profile":
-        from src.services.user_profile import (
-            get_profile, create_profile, set_tone, set_response_length,
-            toggle_emoji, format_profile_display
-        )
-
-        user_id = user.get("id")
-        args_lower = args.lower().strip() if args else ""
-
-        # Parse subcommands
-        if args_lower.startswith("tone "):
-            tone = args_lower.split(" ", 1)[1].strip()
-            if tone in ["concise", "detailed", "casual", "formal"]:
-                await set_tone(user_id, tone)
-                return f"Tone set to: <b>{tone}</b>"
-            return "Valid tones: concise, detailed, casual, formal"
-
-        elif args_lower.startswith("length "):
-            length = args_lower.split(" ", 1)[1].strip()
-            if length in ["short", "medium", "long"]:
-                await set_response_length(user_id, length)
-                return f"Response length set to: <b>{length}</b>"
-            return "Valid lengths: short, medium, long"
-
-        elif args_lower == "emoji on":
-            await toggle_emoji(user_id, True)
-            return "Emoji enabled in responses. 😊"
-
-        elif args_lower == "emoji off":
-            await toggle_emoji(user_id, False)
-            return "Emoji disabled in responses."
-
-        else:
-            # Show profile
-            profile = await get_profile(user_id)
-            if not profile:
-                profile = await create_profile(user_id, user.get("first_name"))
-            return format_profile_display(profile)
-
-    elif cmd == "/context":
-        from src.services.user_context import (
-            get_context, clear_context, format_context_display
-        )
-
-        user_id = user.get("id")
-        args_lower = args.lower().strip() if args else ""
-
-        if args_lower == "clear":
-            await clear_context(user_id)
-            return "Work context cleared."
-
-        context = await get_context(user_id)
-        if context:
-            return format_context_display(context)
-        return "<i>No work context captured yet. Keep chatting to build context!</i>"
-
-    elif cmd == "/macro":
-        from src.services.user_macros import (
-            get_macros, get_macro, create_macro, delete_macro,
-            format_macros_list, format_macro_display
-        )
-
-        user_id = user.get("id")
-        parts = args.split(maxsplit=1) if args else []
-        subcmd = parts[0].lower() if parts else ""
-
-        if not subcmd or subcmd == "list":
-            macros = await get_macros(user_id)
-            return format_macros_list(macros)
-
-        elif subcmd == "show" and len(parts) > 1:
-            macro_id = parts[1].strip()
-            macro = await get_macro(user_id, macro_id)
-            if macro:
-                return format_macro_display(macro)
-            return f"Macro <code>{macro_id}</code> not found."
-
-        elif subcmd == "add":
-            # Format: /macro add "trigger" -> action
-            if len(parts) < 2 or "->" not in parts[1]:
-                return (
-                    "<b>Usage:</b> /macro add \"trigger phrase\" -&gt; action\n\n"
-                    "<b>Examples:</b>\n"
-                    '/macro add "deploy" -&gt; skill:planning Deploy to prod\n'
-                    '/macro add "status" -&gt; command:modal app logs\n'
-                    '/macro add "morning" -&gt; skill:summarize Daily standup'
-                )
-
-            content = parts[1]
-            arrow_idx = content.index("->")
-            trigger_part = content[:arrow_idx].strip()
-            action_part = content[arrow_idx + 2:].strip()
-
-            # Extract trigger (with or without quotes)
-            trigger = trigger_part.strip('"').strip("'")
-
-            # Determine action type
-            if action_part.startswith("skill:"):
-                action_type = "skill"
-                action = action_part[6:].strip()
-            elif action_part.startswith("command:"):
-                action_type = "command"
-                action = action_part[8:].strip()
-            else:
-                action_type = "skill"
-                action = action_part
-
-            macro = await create_macro(
-                user_id=user_id,
-                trigger_phrases=[trigger],
-                action_type=action_type,
-                action=action,
-                description=f"Macro: {trigger}"
-            )
-
-            if macro:
-                return f"✓ Created macro <code>{macro.macro_id}</code>\nTrigger: \"{trigger}\"\nAction: {action_type}:{action}"
-            return "Failed to create macro. Limit reached or duplicate trigger."
-
-        elif subcmd == "remove" and len(parts) > 1:
-            macro_id = parts[1].strip()
-            success = await delete_macro(user_id, macro_id)
-            if success:
-                return f"✓ Deleted macro <code>{macro_id}</code>"
-            return f"Macro <code>{macro_id}</code> not found."
-
-        else:
-            return (
-                "<b>Macro Commands:</b>\n\n"
-                "/macro - List your macros\n"
-                "/macro show &lt;id&gt; - Show macro details\n"
-                "/macro add \"trigger\" -&gt; action - Create macro\n"
-                "/macro remove &lt;id&gt; - Delete macro"
-            )
-
-    elif cmd == "/activity":
-        from src.services.activity import (
-            get_recent_activities, get_activity_stats,
-            format_activity_display, format_stats_display
-        )
-
-        user_id = user.get("id")
-        args_lower = args.lower().strip() if args else ""
-
-        if args_lower == "stats":
-            stats = await get_activity_stats(user_id)
-            return format_stats_display(stats)
-
-        # Default: show recent activity
-        activities = await get_recent_activities(user_id)
-        return format_activity_display(activities)
-
-    elif cmd == "/suggest":
-        from src.core.suggestions import get_suggestions_list, format_suggestions_display
-
-        suggestions = await get_suggestions_list(user.get("id"))
-        return format_suggestions_display(suggestions)
-
-    elif cmd == "/forget":
-        # Send confirmation keyboard
-        keyboard = [
-            [
-                {"text": "✅ Yes, delete everything", "callback_data": f"forget_confirm:{user.get('id')}"},
-                {"text": "❌ Cancel", "callback_data": "forget_cancel"}
-            ]
-        ]
-
-        await send_telegram_keyboard(
-            chat_id,
-            "⚠️ <b>Delete All Personal Data?</b>\n\n"
-            "This will permanently delete:\n"
-            "• Your profile and preferences\n"
-            "• Work context\n"
-            "• All macros\n"
-            "• Activity history\n"
-            "• Conversation memory\n\n"
-            "<b>This cannot be undone.</b>",
-            keyboard
-        )
-        return None  # Message sent with keyboard
-
-    else:
-        return "Unknown command. Try /help"
-
-
-def parse_reminder_time(time_str: str):
-    """Parse relative time string like '30m', '2h', '1d'."""
-    import re
-    from datetime import datetime, timedelta, timezone
-
-    match = re.match(r"(\d+)([mhd])", time_str.lower())
-    if not match:
-        return None
-
-    amount = int(match.group(1))
-    unit = match.group(2)
-
-    now = datetime.now(timezone.utc)
-
-    if unit == "m":
-        return now + timedelta(minutes=amount)
-    elif unit == "h":
-        return now + timedelta(hours=amount)
-    elif unit == "d":
-        return now + timedelta(days=amount)
-
-    return None
 
 
 async def handle_voice_message(
@@ -2228,6 +997,14 @@ async def handle_callback(callback: dict) -> dict:
     elif action == "forget_cancel":
         await send_telegram_message(chat_id, "Data deletion cancelled. Your data is safe.")
 
+    elif action == "demo":
+        # Onboarding demo button pressed
+        await handle_demo_callback(chat_id, value, user)
+
+    elif action == "qr":
+        # Quick reply button pressed
+        await handle_quick_reply_callback(chat_id, value, user)
+
     return {"ok": True}
 
 
@@ -2296,6 +1073,107 @@ async def handle_skill_select(chat_id: int, skill_name: str, user: dict):
     )
 
     await send_telegram_message(chat_id, message)
+
+
+async def handle_demo_callback(chat_id: int, demo_type: str, user: dict):
+    """Handle onboarding demo button press.
+
+    Args:
+        chat_id: Telegram chat ID
+        demo_type: Type of demo (research, code, design, skip)
+        user: User dict from Telegram
+    """
+    from src.core.onboarding import (
+        mark_demo_tried,
+        get_demo_prompt,
+        set_onboarding_step,
+        OnboardingStep,
+    )
+
+    user_id = user.get("id")
+
+    if demo_type == "skip":
+        # User skipped onboarding
+        await set_onboarding_step(user_id, OnboardingStep.COMPLETE)
+        await send_telegram_message(
+            chat_id,
+            "✨ You're all set! Just send any message to get started."
+        )
+        return
+
+    # Get demo prompt
+    prompt = get_demo_prompt(demo_type)
+    if not prompt:
+        return
+
+    # Mark demo tried
+    await mark_demo_tried(user_id, demo_type)
+
+    # Show demo prompt
+    await send_telegram_message(
+        chat_id,
+        f"<i>Demo: {demo_type.title()}</i>\n\n<b>Trying:</b> {prompt}"
+    )
+
+    # Execute demo (reuse process_message)
+    response = await process_message(prompt, user, chat_id)
+    if response:
+        await send_telegram_message(chat_id, response)
+
+    # Show completion message
+    await send_telegram_message(
+        chat_id,
+        "✨ <b>Great!</b> You've seen what I can do. Try another demo or just ask me anything!"
+    )
+
+
+async def handle_quick_reply_callback(chat_id: int, value: str, user: dict):
+    """Handle quick reply button press.
+
+    Args:
+        chat_id: Telegram chat ID
+        value: Callback value (action:skill)
+        user: User dict from Telegram
+    """
+    from src.core.quick_replies import get_action_prompt, is_special_action
+    from src.core.state import get_state_manager
+
+    # Parse value: action:skill or just action
+    parts = value.split(":", 1)
+    action = parts[0] if parts else ""
+    skill = parts[1] if len(parts) > 1 else ""
+
+    # Get original context
+    state = get_state_manager()
+    context = await state.get("quick_reply_context", str(user.get("id"))) or {}
+    context["skill"] = skill or context.get("skill")
+
+    # Special actions
+    if is_special_action(action):
+        if action == "download_report":
+            await send_telegram_message(
+                chat_id,
+                "📥 Use /reports to see your available reports."
+            )
+        elif action == "share_report":
+            await send_telegram_message(
+                chat_id,
+                "📤 Forward my previous message to share, or use /reports for links."
+            )
+        elif action in ("resize", "search_doc"):
+            await send_telegram_message(chat_id, "What would you like? Please describe.")
+        return
+
+    # Get action prompt
+    prompt = get_action_prompt(action, context)
+    if not prompt:
+        await send_telegram_message(chat_id, "Action not available.")
+        return
+
+    # Execute prompt
+    response = await process_message(prompt, user, chat_id)
+    if response:
+        await send_telegram_message(chat_id, response)
 
 
 async def handle_improvement_approve(chat_id: int, proposal_id: str, user: dict):
@@ -2411,7 +1289,7 @@ class TelegramChatAgent:
 
     @modal.asgi_app()
     def app(self):
-        return create_web_app()
+        return web_app
 
 
 @app.function(

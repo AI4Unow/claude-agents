@@ -12,6 +12,11 @@ def mock_state_manager():
         manager = AsyncMock()
         manager.set = AsyncMock()
         manager.get = AsyncMock(return_value=None)
+        manager.get_user_tier_cached = AsyncMock(return_value="user")
+        manager.get_user_mode = AsyncMock(return_value="auto")
+        manager.clear_conversation = AsyncMock()
+        manager.clear_pending_skill = AsyncMock()
+        manager.invalidate_user_tier = AsyncMock()
         mock.return_value = manager
         yield manager
 
@@ -39,3 +44,32 @@ def circuit():
 def frozen_time():
     """Provide frozen datetime for consistent testing."""
     return datetime(2025, 12, 28, 12, 0, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture
+def mock_user():
+    """Sample Telegram user dict."""
+    return {
+        "id": 123456789,
+        "first_name": "Test",
+        "last_name": "User",
+        "username": "testuser"
+    }
+
+
+@pytest.fixture
+def mock_admin_user():
+    """Sample admin user dict."""
+    return {
+        "id": 999999999,
+        "first_name": "Admin",
+        "username": "admin"
+    }
+
+
+@pytest.fixture(autouse=True)
+def mock_env_vars(monkeypatch):
+    """Set required environment variables."""
+    monkeypatch.setenv("ADMIN_TELEGRAM_ID", "999999999")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", "test-secret")
