@@ -17,10 +17,10 @@ image = (
     .apt_install("git", "curl")
     .pip_install_from_requirements("requirements.txt")
     .env({"PYTHONPATH": "/root"})
-    .add_local_dir("src", remote_path="/root/src")
-    .add_local_dir("api", remote_path="/root/api")  # FastAPI routes
-    .add_local_dir("commands", remote_path="/root/commands")  # Command handlers
-    .add_local_dir("skills", remote_path="/root/skills_source")  # For deploy-time sync
+    .add_local_dir("src", remote_path="/root/src", copy=True)
+    .add_local_dir("api", remote_path="/root/api", copy=True)  # FastAPI routes
+    .add_local_dir("commands", remote_path="/root/commands", copy=True)  # Command handlers
+    .add_local_dir("skills", remote_path="/root/skills_source", copy=True)  # For deploy-time sync
 )
 
 # Skills volume - stores mutable info.md files (II Framework: Information layer)
@@ -132,7 +132,9 @@ async def execute_skill_simple(skill_name: str, task: str, context: dict) -> str
         )
         import json
 
-        user_id = context.get("user_id", 0)
+        # Extract user_id from context (either direct or from user object)
+        user = context.get("user", {})
+        user_id = context.get("user_id", user.get("id", 0) if isinstance(user, dict) else 0)
 
         if skill_name == "gemini-deep-research":
             result = await execute_deep_research(
@@ -145,24 +147,34 @@ async def execute_skill_simple(skill_name: str, task: str, context: dict) -> str
         elif skill_name == "gemini-thinking":
             result = await execute_thinking(
                 prompt=task,
-                thinking_level=context.get("thinking_level", "high")
+                thinking_level=context.get("thinking_level", "high"),
+                user_id=user_id,
             )
         elif skill_name == "gemini-vision":
             result = await execute_vision(
                 image_base64=context.get("image_base64", ""),
                 prompt=task,
-                media_type=context.get("media_type", "image/jpeg")
+                media_type=context.get("media_type", "image/jpeg"),
+                user_id=user_id,
             )
 
-        # Return formatted result
+        # Return formatted result with download link
         if result.get("success"):
+            output = ""
             if "report" in result:
-                return result["report"]
+                output = result["report"]
             elif "answer" in result:
-                return result["answer"]
+                output = result["answer"]
             elif "analysis" in result:
-                return result["analysis"]
-            return json.dumps(result)
+                output = result["analysis"]
+            else:
+                output = json.dumps(result)
+
+            # Append download link if available
+            if result.get("download_url"):
+                output += f"\n\n📥 [Download]({result['download_url']})"
+
+            return output
         else:
             return f"Error: {result.get('error', 'Unknown error')}"
 
@@ -1808,6 +1820,29 @@ async def send_due_reminders():
 
     except Exception as e:
         logger.error("reminder_error", error=str(e))
+
+
+@app.function(
+    image=image,
+    secrets=secrets,
+    schedule=modal.Cron("0 3 * * *"),  # 3 AM UTC daily
+    timeout=300,
+)
+async def cleanup_content_files():
+    """Delete expired content files from Firebase Storage."""
+    import structlog
+    from src.services.firebase import init_firebase, cleanup_expired_content
+
+    logger = structlog.get_logger()
+    init_firebase()
+
+    try:
+        count = await cleanup_expired_content(days=7)
+        logger.info("content_cleanup_complete", deleted=count)
+        return {"status": "success", "deleted": count}
+    except Exception as e:
+        logger.error("content_cleanup_error", error=str(e)[:100])
+        return {"status": "error", "error": str(e)}
 
 
 # ==================== Content Agent ====================

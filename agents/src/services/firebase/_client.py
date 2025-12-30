@@ -87,3 +87,4 @@ class Collections:
     REPORTS = "reports"
     USER_TIERS = "user_tiers"
     FAQ_ENTRIES = "faq_entries"
+    CONTENT_FILES = "content_files"

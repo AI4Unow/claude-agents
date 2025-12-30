@@ -132,15 +132,17 @@ async def execute_grounded_query(
 async def execute_thinking(
     prompt: str,
     thinking_level: str = "high",
+    user_id: int = 0,
 ) -> Dict:
     """Execute thinking skill with configurable depth.
 
     Args:
         prompt: Problem to analyze
         thinking_level: minimal, low, medium, high
+        user_id: User ID for saving result to storage
 
     Returns:
-        Dict with analysis
+        Dict with analysis and optional download_url
     """
     client = get_gemini_client()
 
@@ -151,11 +153,30 @@ async def execute_thinking(
             model="gemini-2.0-flash-001",
         )
 
-        return {
+        response = {
             "success": True,
             "analysis": result,
             "thinking_level": thinking_level,
         }
+
+        # Save analysis to storage if user_id provided
+        if user_id:
+            try:
+                from src.services.firebase import save_file
+                file_id = f"thinking-{uuid.uuid4().hex[:8]}"
+                url = await save_file(
+                    user_id=user_id,
+                    file_id=file_id,
+                    content=result,
+                    content_type="text/markdown",
+                    metadata={"title": f"Analysis ({thinking_level})", "skill": "gemini-thinking"}
+                )
+                response["file_id"] = file_id
+                response["download_url"] = url
+            except Exception as e:
+                logger.warning("thinking_save_failed", error=str(e)[:50])
+
+        return response
 
     except Exception as e:
         logger.error("thinking_error", error=str(e)[:100])
@@ -169,6 +190,7 @@ async def execute_vision(
     image_base64: str,
     prompt: str,
     media_type: str = "image/jpeg",
+    user_id: int = 0,
 ) -> Dict:
     """Execute vision analysis skill.
 
@@ -176,9 +198,10 @@ async def execute_vision(
         image_base64: Base64 encoded image
         prompt: Analysis prompt
         media_type: Image MIME type
+        user_id: User ID for saving result to storage
 
     Returns:
-        Dict with analysis
+        Dict with analysis and optional download_url
     """
     client = get_gemini_client()
 
@@ -189,10 +212,29 @@ async def execute_vision(
             media_type=media_type,
         )
 
-        return {
+        response = {
             "success": True,
             "analysis": result,
         }
+
+        # Save analysis to storage if user_id provided
+        if user_id:
+            try:
+                from src.services.firebase import save_file
+                file_id = f"vision-{uuid.uuid4().hex[:8]}"
+                url = await save_file(
+                    user_id=user_id,
+                    file_id=file_id,
+                    content=result,
+                    content_type="text/markdown",
+                    metadata={"title": "Vision Analysis", "skill": "gemini-vision"}
+                )
+                response["file_id"] = file_id
+                response["download_url"] = url
+            except Exception as e:
+                logger.warning("vision_save_failed", error=str(e)[:50])
+
+        return response
 
     except Exception as e:
         logger.error("vision_error", error=str(e)[:100])

@@ -11,8 +11,10 @@ Usage:
 """
 import argparse
 import asyncio
+import mimetypes
 import os
 import sys
+import uuid
 from pathlib import Path
 
 # Add project root to path
@@ -23,7 +25,8 @@ from src.services.firebase import (
     get_pending_local_tasks,
     claim_local_task,
     complete_local_task,
-    get_task_result
+    get_task_result,
+    save_file,
 )
 from src.skills.registry import SkillRegistry
 from src.services.llm import get_llm_client
@@ -31,9 +34,16 @@ from src.utils.logging import get_logger
 
 logger = get_logger()
 
+# File patterns to detect skill output
+OUTPUT_PATTERNS = ["*.pdf", "*.png", "*.jpg", "*.jpeg", "*.docx", "*.pptx", "*.xlsx"]
 
-async def execute_local_skill(skill_name: str, task: str) -> str:
-    """Execute a local skill with LLM."""
+
+async def execute_local_skill(skill_name: str, task: str, user_id: int = 0) -> dict:
+    """Execute a local skill with LLM.
+
+    Returns:
+        Dict with 'text' and optional 'download_url', 'file_name'
+    """
     # Load skill from local filesystem
     skills_path = Path(__file__).parent.parent / "skills"
     registry = SkillRegistry(skills_path)
@@ -52,7 +62,43 @@ async def execute_local_skill(skill_name: str, task: str) -> str:
         max_tokens=4096
     )
 
-    return response if isinstance(response, str) else str(response)
+    result = {"text": response if isinstance(response, str) else str(response)}
+
+    # Check for file outputs in current directory
+    # Local skills often save files to cwd
+    for pattern in OUTPUT_PATTERNS:
+        for output_file in Path(".").glob(pattern):
+            # Skip files older than 1 minute (not from this execution)
+            if output_file.stat().st_mtime < (asyncio.get_event_loop().time() - 60):
+                continue
+
+            # Upload to Storage if user_id provided
+            if user_id:
+                try:
+                    content_type = mimetypes.guess_type(str(output_file))[0] or "application/octet-stream"
+                    file_id = f"{skill_name}-{uuid.uuid4().hex[:8]}"
+
+                    with open(output_file, "rb") as f:
+                        content = f.read()
+
+                    url = await save_file(
+                        user_id=user_id,
+                        file_id=file_id,
+                        content=content,
+                        content_type=content_type,
+                        metadata={"title": output_file.name, "skill": skill_name}
+                    )
+                    result["download_url"] = url
+                    result["file_name"] = output_file.name
+                    logger.info("file_uploaded", skill=skill_name, file=output_file.name)
+
+                    # Clean up local file
+                    output_file.unlink()
+                    break
+                except Exception as e:
+                    logger.warning("upload_failed", error=str(e)[:50])
+
+    return result
 
 
 async def notify_task_complete(
@@ -61,9 +107,10 @@ async def notify_task_complete(
     task_id: str,
     result: str,
     success: bool = True,
-    error: str = None
+    error: str = None,
+    download_url: str = None,
 ):
-    """Notify user that task completed."""
+    """Notify user that task completed with optional download link."""
     import httpx
 
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -74,28 +121,42 @@ async def notify_task_complete(
         # Truncate result for Telegram (max 4096 chars)
         result_preview = result[:500] + "..." if len(result) > 500 else result
         message = (
-            f"✅ *Task Completed*\n\n"
+            f"*Task Completed*\n\n"
             f"Skill: `{skill_name}`\n"
             f"Task ID: `{task_id[:8]}...`\n\n"
             f"*Result:*\n{result_preview}"
         )
+
+        # Add inline download button if URL provided
+        keyboard = None
+        if download_url:
+            keyboard = {
+                "inline_keyboard": [[
+                    {"text": "Download", "url": download_url}
+                ]]
+            }
     else:
         message = (
-            f"❌ *Task Failed*\n\n"
+            f"*Task Failed*\n\n"
             f"Skill: `{skill_name}`\n"
             f"Task ID: `{task_id[:8]}...`\n\n"
             f"*Error:* {error}"
         )
+        keyboard = None
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
+            payload = {
+                "chat_id": user_id,
+                "text": message,
+                "parse_mode": "Markdown"
+            }
+            if keyboard:
+                payload["reply_markup"] = keyboard
+
             await client.post(
                 f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                json={
-                    "chat_id": user_id,
-                    "text": message,
-                    "parse_mode": "Markdown"
-                }
+                json=payload
             )
     except Exception as e:
         logger.error("notification_failed", error=str(e))
@@ -117,14 +178,22 @@ async def process_task(task: dict) -> bool:
         return False
 
     try:
-        # Execute the skill
-        result = await execute_local_skill(skill_name, task_text)
+        # Execute the skill - returns dict with text and optional download_url
+        result = await execute_local_skill(skill_name, task_text, user_id)
+
+        # Build result text with download link if present
+        result_text = result.get("text", "")
+        if result.get("download_url"):
+            result_text += f"\n\nDownload: {result['download_url']}"
 
         # Mark as complete
-        await complete_local_task(task_id, result, success=True)
+        await complete_local_task(task_id, result_text, success=True)
 
-        # Notify user
-        await notify_task_complete(user_id, skill_name, task_id, result)
+        # Notify user with download link
+        await notify_task_complete(
+            user_id, skill_name, task_id, result.get("text", ""),
+            download_url=result.get("download_url")
+        )
 
         logger.info("task_completed", task_id=task_id, skill=skill_name)
         return True

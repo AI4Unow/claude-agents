@@ -59,9 +59,11 @@ from .faq import (
 # Reports
 from .reports import (
     save_report,
+    save_file,
     list_user_reports,
     get_report_url,
     get_report_content,
+    cleanup_expired_content,
 )
 
 # Reminders
@@ -175,9 +177,11 @@ __all__ = [
 
     # Reports
     "save_report",
+    "save_file",
     "list_user_reports",
     "get_report_url",
     "get_report_content",
+    "cleanup_expired_content",
 
     # Reminders
     "create_reminder",
