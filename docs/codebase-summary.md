@@ -103,7 +103,7 @@ The main Modal app defining:
 | `agentic.py` | 260 | Agentic loop with tool execution + conversation persistence |
 | `qdrant.py` | 617 | Qdrant vector database client |
 | `telegram.py` | 400 | Telegram message utilities + formatters (markdown-to-HTML) |
-| `embeddings.py` | 200 | Embedding generation with caching |
+| `embeddings.py` | 187 | Gemini embeddings (gemini-embedding-001, 3072 dim, batch support) |
 | `media.py` | 127 | Media processing utilities |
 | `user_profile.py` | 200 | User profile CRUD + onboarding |
 | `user_context.py` | 150 | Work context management |
@@ -139,7 +139,7 @@ The main Modal app defining:
 | `context_optimization.py` | 283 | Context compaction and optimization |
 | `chain.py` | 243 | Sequential skill pipeline execution |
 | `router.py` | 160 | Semantic skill routing via Qdrant |
-| `faq.py` | 350 | Smart FAQ with hybrid keyword + semantic matching |
+| `faq.py` | 129 | Smart FAQ with hybrid keyword + semantic matching |
 | `suggestions.py` | 200 | Proactive suggestion engine |
 | `macro_executor.py` | 170 | Macro execution with rate limiting |
 

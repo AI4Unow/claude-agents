@@ -470,10 +470,11 @@ firestore/
 
 | Collection | Vector Dim | Purpose |
 |------------|------------|---------|
-| `skills` | 768/1536 | Skill embeddings for routing |
-| `knowledge` | 768/1536 | Cross-skill insights |
-| `conversations` | 768/1536 | Chat history |
-| `errors` | 768/1536 | Error pattern matching |
+| `skills` | 3072 | Skill embeddings for routing (gemini-embedding-001) |
+| `faq_embeddings` | 3072 | FAQ semantic search (20 entries) |
+| `knowledge` | 3072 | Cross-skill insights |
+| `conversations` | 3072 | Chat history |
+| `errors` | 3072 | Error pattern matching |
 
 ## Cost Estimate
 

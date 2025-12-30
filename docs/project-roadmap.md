@@ -90,7 +90,9 @@ The II Framework agents are deployed and operational on Modal.com with full reli
 - [x] Dangerous command blocking
 - [x] Smart FAQ system (hybrid keyword + semantic)
 - [x] 6 new commands (/profile, /context, /macro, /activity, /suggest, /forget)
-- [x] 55 skills total
+- [x] 53 skills total
+- [x] Gemini embeddings (gemini-embedding-001, 3072 dim)
+- [x] Batch embedding for FAQ seeding
 
 ## Next Priorities
 
@@ -157,10 +159,9 @@ The II Framework agents are deployed and operational on Modal.com with full reli
 
 ## Open Questions
 
-1. **Embedding Model** - Which model for semantic routing? (text-embedding-004 vs alternatives)
-2. **Compaction Strategy** - When to compact context? (threshold vs scheduled)
-3. **Skill Dependencies** - How to handle inter-skill dependencies?
-4. **Cost Optimization** - How to reduce LLM API costs while maintaining quality?
+1. **Compaction Strategy** - When to compact context? (threshold vs scheduled)
+2. **Skill Dependencies** - How to handle inter-skill dependencies?
+3. **Cost Optimization** - How to reduce LLM API costs while maintaining quality?
 
 ## Related Plans
 

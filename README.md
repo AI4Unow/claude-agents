@@ -6,7 +6,7 @@ Multi-agent system using the **II Framework (Information & Implementation)** dep
 
 **Phase:** Production MVP
 **Deploy URL:** https://duc-a-nguyen--claude-agents-telegramchatagent-app.modal.run
-**Last Updated:** Dec 29, 2025
+**Last Updated:** Dec 30, 2025
 
 ### Key Features
 - 7 circuit breakers (claude, exa, tavily, firebase, qdrant, telegram, gemini)
@@ -14,6 +14,9 @@ Multi-agent system using the **II Framework (Information & Implementation)** dep
 - Self-improvement loop with Telegram admin approval
 - 53 skills (8 local, 40+ remote, 7 hybrid deployment)
 - Gemini API integration (deep research, grounding, vision, thinking)
+- Smart FAQ system with hybrid keyword+semantic matching
+- User personalization (profiles, preferences, language detection)
+- Gemini embeddings (gemini-embedding-001, 3072 dimensions)
 - Firebase Storage for research reports
 - User tier system (guest, user, developer, admin)
 - Stress test framework (Locust + chaos engineering)
@@ -32,6 +35,7 @@ Multi-agent system using the **II Framework (Information & Implementation)** dep
 - **Runtime:** Modal.com (Python 3.11, serverless)
 - **Web Framework:** FastAPI
 - **AI:** Anthropic Claude API, Google Gemini (Vertex AI)
+- **Embeddings:** Gemini gemini-embedding-001 (3072 dim)
 - **Vector Memory:** Qdrant Cloud
 - **State Store:** Firebase Firestore + Storage
 - **Chat Platform:** Telegram Bot
@@ -116,12 +120,14 @@ agents/
 │   │   ├── web_search.py      # Exa/Tavily
 │   │   └── ...
 │   └── core/                  # II Framework (10 modules)
-│       ├── state.py           # L1 cache + L2 Firebase
+│       ├── state.py           # L1 cache + L2 Firebase + personalization
+│       ├── faq.py             # Smart FAQ (keyword + semantic)
 │       ├── resilience.py      # 7 circuit breakers
 │       ├── orchestrator.py    # Multi-skill execution
 │       └── improvement.py     # Self-improvement
 ├── skills/                    # 53 skill info.md files
-├── scripts/                   # 5 utility scripts
+├── scripts/                   # 6 utility scripts
+│   ├── seed-faq.py            # FAQ batch seeding
 │   ├── local-executor.py      # Local skill executor
 │   └── pull-improvements.py   # Apply improvements
 └── tests/                     # 22 test files (unit + stress)
