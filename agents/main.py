@@ -717,6 +717,18 @@ Just send a message to chat, or use /skills to explore!"""
             "/rewrite &lt;text&gt; - Improve text",
         ])
 
+        # Personalization commands (all users)
+        help_text.extend([
+            "",
+            "<b>Personalization:</b>",
+            "/profile - View/edit your profile",
+            "/context - View work context",
+            "/macro - Manage personal macros",
+            "/activity - View recent activity",
+            "/suggest - Get personalized suggestions",
+            "/forget - Delete all personal data",
+        ])
+
         # Developer+ commands
         if has_permission(tier, "developer"):
             help_text.extend([
@@ -1090,6 +1102,138 @@ Just send a message to chat, or use /skills to explore!"""
 
         return "Unknown admin command. Use /admin for help."
 
+    elif cmd == "/faq":
+        # Admin only: manage FAQ entries
+        admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
+        if str(user.get("id")) != str(admin_id):
+            return "Admin only command."
+
+        from src.services.firebase import (
+            get_faq_entries, create_faq_entry, update_faq_entry,
+            delete_faq_entry, FAQEntry
+        )
+        from src.services.qdrant import upsert_faq_embedding, delete_faq_embedding, get_text_embedding
+        from src.core.faq import get_faq_matcher
+
+        parts = args.split(maxsplit=1) if args else []
+        subcmd = parts[0].lower() if parts else ""
+
+        if not subcmd or subcmd == "help":
+            return (
+                "<b>FAQ Commands:</b>\n\n"
+                "/faq list - List all FAQ entries\n"
+                "/faq add &lt;pattern&gt; | &lt;answer&gt; - Add FAQ\n"
+                "/faq edit &lt;id&gt; | &lt;answer&gt; - Update answer\n"
+                "/faq delete &lt;id&gt; - Disable FAQ entry\n"
+                "/faq refresh - Refresh FAQ cache"
+            )
+
+        elif subcmd == "list":
+            entries = await get_faq_entries(enabled_only=False)
+            if not entries:
+                return "No FAQ entries found."
+
+            lines = ["<b>FAQ Entries:</b>\n"]
+            for e in entries[:20]:  # Limit to 20
+                status = "✓" if e.enabled else "✗"
+                pattern_preview = e.patterns[0][:25] if e.patterns else "?"
+                lines.append(f"{status} <code>{e.id}</code>\n   {pattern_preview}...")
+
+            if len(entries) > 20:
+                lines.append(f"\n... and {len(entries) - 20} more")
+
+            return "\n".join(lines)
+
+        elif subcmd == "add":
+            # Format: /faq add <pattern> | <answer>
+            if len(parts) < 2 or "|" not in parts[1]:
+                return "Usage: /faq add &lt;pattern&gt; | &lt;answer&gt;"
+
+            content = parts[1]
+            pipe_idx = content.index("|")
+            pattern = content[:pipe_idx].strip()
+            answer = content[pipe_idx + 1:].strip()
+
+            if not pattern or not answer:
+                return "Both pattern and answer are required."
+
+            # Generate ID from pattern
+            import re
+            faq_id = re.sub(r'[^a-z0-9]+', '-', pattern.lower())[:30]
+
+            # Generate embedding
+            embedding = await get_text_embedding(answer)
+
+            entry = FAQEntry(
+                id=faq_id,
+                patterns=[pattern],
+                answer=answer,
+                category="custom",
+                enabled=True,
+                embedding=embedding
+            )
+
+            success = await create_faq_entry(entry)
+            if success:
+                # Sync to Qdrant if embedding exists
+                if embedding:
+                    await upsert_faq_embedding(faq_id, embedding, answer)
+                get_faq_matcher().invalidate_cache()
+                return f"✓ Created FAQ: <code>{faq_id}</code>"
+            else:
+                return "Failed to create FAQ entry."
+
+        elif subcmd == "edit":
+            # Format: /faq edit <id> | <answer>
+            if len(parts) < 2 or "|" not in parts[1]:
+                return "Usage: /faq edit &lt;id&gt; | &lt;answer&gt;"
+
+            content = parts[1]
+            pipe_idx = content.index("|")
+            faq_id = content[:pipe_idx].strip()
+            new_answer = content[pipe_idx + 1:].strip()
+
+            if not faq_id or not new_answer:
+                return "Both ID and answer are required."
+
+            # Generate new embedding
+            embedding = await get_text_embedding(new_answer)
+
+            updates = {"answer": new_answer}
+            if embedding:
+                updates["embedding"] = embedding
+
+            success = await update_faq_entry(faq_id, updates)
+            if success:
+                # Update Qdrant
+                if embedding:
+                    await upsert_faq_embedding(faq_id, embedding, new_answer)
+                get_faq_matcher().invalidate_cache()
+                return f"✓ Updated FAQ: <code>{faq_id}</code>"
+            else:
+                return f"FAQ entry <code>{faq_id}</code> not found."
+
+        elif subcmd == "delete":
+            if len(parts) < 2:
+                return "Usage: /faq delete &lt;id&gt;"
+
+            faq_id = parts[1].strip()
+            success = await delete_faq_entry(faq_id)
+
+            if success:
+                await delete_faq_embedding(faq_id)
+                get_faq_matcher().invalidate_cache()
+                return f"✓ Disabled FAQ: <code>{faq_id}</code>"
+            else:
+                return f"FAQ entry <code>{faq_id}</code> not found."
+
+        elif subcmd == "refresh":
+            get_faq_matcher().invalidate_cache()
+            return "✓ FAQ cache invalidated. Will refresh on next query."
+
+        else:
+            return "Unknown FAQ command. Use /faq for help."
+
     elif cmd == "/task":
         # User+ only: check local task status
         from src.core.state import get_state_manager
@@ -1107,6 +1251,189 @@ Just send a message to chat, or use /skills to explore!"""
 
         task = await get_task_result(args.strip())
         return format_task_status(task)
+
+    # ==================== Personalization Commands ====================
+
+    elif cmd == "/profile":
+        from src.services.user_profile import (
+            get_profile, create_profile, set_tone, set_response_length,
+            toggle_emoji, format_profile_display
+        )
+
+        user_id = user.get("id")
+        args_lower = args.lower().strip() if args else ""
+
+        # Parse subcommands
+        if args_lower.startswith("tone "):
+            tone = args_lower.split(" ", 1)[1].strip()
+            if tone in ["concise", "detailed", "casual", "formal"]:
+                await set_tone(user_id, tone)
+                return f"Tone set to: <b>{tone}</b>"
+            return "Valid tones: concise, detailed, casual, formal"
+
+        elif args_lower.startswith("length "):
+            length = args_lower.split(" ", 1)[1].strip()
+            if length in ["short", "medium", "long"]:
+                await set_response_length(user_id, length)
+                return f"Response length set to: <b>{length}</b>"
+            return "Valid lengths: short, medium, long"
+
+        elif args_lower == "emoji on":
+            await toggle_emoji(user_id, True)
+            return "Emoji enabled in responses. 😊"
+
+        elif args_lower == "emoji off":
+            await toggle_emoji(user_id, False)
+            return "Emoji disabled in responses."
+
+        else:
+            # Show profile
+            profile = await get_profile(user_id)
+            if not profile:
+                profile = await create_profile(user_id, user.get("first_name"))
+            return format_profile_display(profile)
+
+    elif cmd == "/context":
+        from src.services.user_context import (
+            get_context, clear_context, format_context_display
+        )
+
+        user_id = user.get("id")
+        args_lower = args.lower().strip() if args else ""
+
+        if args_lower == "clear":
+            await clear_context(user_id)
+            return "Work context cleared."
+
+        context = await get_context(user_id)
+        if context:
+            return format_context_display(context)
+        return "<i>No work context captured yet. Keep chatting to build context!</i>"
+
+    elif cmd == "/macro":
+        from src.services.user_macros import (
+            get_macros, get_macro, create_macro, delete_macro,
+            format_macros_list, format_macro_display
+        )
+
+        user_id = user.get("id")
+        parts = args.split(maxsplit=1) if args else []
+        subcmd = parts[0].lower() if parts else ""
+
+        if not subcmd or subcmd == "list":
+            macros = await get_macros(user_id)
+            return format_macros_list(macros)
+
+        elif subcmd == "show" and len(parts) > 1:
+            macro_id = parts[1].strip()
+            macro = await get_macro(user_id, macro_id)
+            if macro:
+                return format_macro_display(macro)
+            return f"Macro <code>{macro_id}</code> not found."
+
+        elif subcmd == "add":
+            # Format: /macro add "trigger" -> action
+            if len(parts) < 2 or "->" not in parts[1]:
+                return (
+                    "<b>Usage:</b> /macro add \"trigger phrase\" -&gt; action\n\n"
+                    "<b>Examples:</b>\n"
+                    '/macro add "deploy" -&gt; skill:planning Deploy to prod\n'
+                    '/macro add "status" -&gt; command:modal app logs\n'
+                    '/macro add "morning" -&gt; skill:summarize Daily standup'
+                )
+
+            content = parts[1]
+            arrow_idx = content.index("->")
+            trigger_part = content[:arrow_idx].strip()
+            action_part = content[arrow_idx + 2:].strip()
+
+            # Extract trigger (with or without quotes)
+            trigger = trigger_part.strip('"').strip("'")
+
+            # Determine action type
+            if action_part.startswith("skill:"):
+                action_type = "skill"
+                action = action_part[6:].strip()
+            elif action_part.startswith("command:"):
+                action_type = "command"
+                action = action_part[8:].strip()
+            else:
+                action_type = "skill"
+                action = action_part
+
+            macro = await create_macro(
+                user_id=user_id,
+                trigger_phrases=[trigger],
+                action_type=action_type,
+                action=action,
+                description=f"Macro: {trigger}"
+            )
+
+            if macro:
+                return f"✓ Created macro <code>{macro.macro_id}</code>\nTrigger: \"{trigger}\"\nAction: {action_type}:{action}"
+            return "Failed to create macro. Limit reached or duplicate trigger."
+
+        elif subcmd == "remove" and len(parts) > 1:
+            macro_id = parts[1].strip()
+            success = await delete_macro(user_id, macro_id)
+            if success:
+                return f"✓ Deleted macro <code>{macro_id}</code>"
+            return f"Macro <code>{macro_id}</code> not found."
+
+        else:
+            return (
+                "<b>Macro Commands:</b>\n\n"
+                "/macro - List your macros\n"
+                "/macro show &lt;id&gt; - Show macro details\n"
+                "/macro add \"trigger\" -&gt; action - Create macro\n"
+                "/macro remove &lt;id&gt; - Delete macro"
+            )
+
+    elif cmd == "/activity":
+        from src.services.activity import (
+            get_recent_activities, get_activity_stats,
+            format_activity_display, format_stats_display
+        )
+
+        user_id = user.get("id")
+        args_lower = args.lower().strip() if args else ""
+
+        if args_lower == "stats":
+            stats = await get_activity_stats(user_id)
+            return format_stats_display(stats)
+
+        # Default: show recent activity
+        activities = await get_recent_activities(user_id)
+        return format_activity_display(activities)
+
+    elif cmd == "/suggest":
+        from src.core.suggestions import get_suggestions_list, format_suggestions_display
+
+        suggestions = await get_suggestions_list(user.get("id"))
+        return format_suggestions_display(suggestions)
+
+    elif cmd == "/forget":
+        # Send confirmation keyboard
+        keyboard = [
+            [
+                {"text": "✅ Yes, delete everything", "callback_data": f"forget_confirm:{user.get('id')}"},
+                {"text": "❌ Cancel", "callback_data": "forget_cancel"}
+            ]
+        ]
+
+        await send_telegram_keyboard(
+            chat_id,
+            "⚠️ <b>Delete All Personal Data?</b>\n\n"
+            "This will permanently delete:\n"
+            "• Your profile and preferences\n"
+            "• Work context\n"
+            "• All macros\n"
+            "• Activity history\n"
+            "• Conversation memory\n\n"
+            "<b>This cannot be undone.</b>",
+            keyboard
+        )
+        return None  # Message sent with keyboard
 
     else:
         return "Unknown command. Try /help"
@@ -1537,6 +1864,19 @@ async def process_message(
     if not allowed:
         return f"Rate limited. Try again in {reset_in}s.\n\nUpgrade tier for higher limits."
 
+    # FAQ check - fast path for common questions (identity, capabilities, etc.)
+    # Skip for long messages (likely not FAQ)
+    if len(text) <= 200:
+        try:
+            from src.core.faq import get_faq_matcher
+            faq_answer = await get_faq_matcher().match(text)
+            if faq_answer:
+                logger.info("faq_response", user_id=user_id)
+                return faq_answer
+        except Exception as e:
+            logger.error("faq_check_error", error=str(e)[:50])
+            # Continue to normal flow on error
+
     # React to acknowledge receipt
     if message_id:
         await set_message_reaction(chat_id, message_id, "👀")
@@ -1642,6 +1982,41 @@ async def process_message(
 
         # Update progress with completion (keep as history per validation)
         await edit_progress_message(chat_id, progress_msg_id, "✅ <i>Complete</i>")
+
+        # Log activity (fire-and-forget, non-blocking)
+        try:
+            from src.services.activity import log_activity
+            from src.services.user_context import extract_and_update_context
+
+            # Determine action type and skill used
+            action_type = "chat"
+            skill_used = None
+
+            if pending_skill:
+                action_type = "skill_invoke"
+                skill_used = pending_skill
+            elif mode == "routed" or (mode == "auto" and 'skill' in locals()):
+                # Check if a skill was used
+                action_type = "skill_invoke"
+                skill_used = skill.name if 'skill' in locals() and skill else None
+
+            # Fire and forget activity logging
+            asyncio.create_task(
+                log_activity(
+                    user_id=user_id,
+                    action_type=action_type,
+                    summary=text[:100],
+                    skill=skill_used,
+                    duration_ms=0  # Duration tracking would require refactoring
+                )
+            )
+
+            # Update work context with message patterns (fire and forget)
+            asyncio.create_task(
+                extract_and_update_context(user_id, text, skill_used)
+            )
+        except Exception as e:
+            logger.warning("activity_log_failed", error=str(e)[:50])
 
         return response
 
@@ -1843,6 +2218,15 @@ async def handle_callback(callback: dict) -> dict:
     elif action == "improve_reject":
         # Improvement proposal rejected
         await handle_improvement_reject(chat_id, value, user)
+
+    elif action == "forget_confirm":
+        # User confirmed data deletion
+        from src.services.data_deletion import delete_all_user_data, format_deletion_result
+        results = await delete_all_user_data(user.get("id"))
+        await send_telegram_message(chat_id, format_deletion_result(results))
+
+    elif action == "forget_cancel":
+        await send_telegram_message(chat_id, "Data deletion cancelled. Your data is safe.")
 
     return {"ok": True}
 

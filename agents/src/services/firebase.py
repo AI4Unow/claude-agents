@@ -1301,3 +1301,113 @@ def get_rate_limit(tier: TierType) -> int:
     """Get rate limit (req/min) for tier."""
     return TIER_RATE_LIMITS.get(tier, 5)
 
+
+# ==================== FAQ System ====================
+
+@dataclass
+class FAQEntry:
+    """FAQ entry for smart FAQ system."""
+    id: str
+    patterns: List[str]
+    answer: str
+    category: str
+    enabled: bool
+    embedding: Optional[List[float]] = None
+    updated_at: Optional[datetime] = None
+
+
+async def get_faq_entries(enabled_only: bool = True) -> List[FAQEntry]:
+    """Get all FAQ entries from Firestore."""
+    if firebase_circuit.state == CircuitState.OPEN:
+        return []
+
+    try:
+        db = get_db()
+        query = db.collection("faq_entries")
+
+        if enabled_only:
+            query = query.where(filter=FieldFilter("enabled", "==", True))
+
+        docs = query.stream()
+        entries = []
+
+        for doc in docs:
+            data = doc.to_dict()
+            entries.append(FAQEntry(
+                id=doc.id,
+                patterns=data.get("patterns", []),
+                answer=data.get("answer", ""),
+                category=data.get("category", "general"),
+                enabled=data.get("enabled", True),
+                embedding=data.get("embedding"),
+                updated_at=data.get("updated_at")
+            ))
+
+        firebase_circuit._record_success()
+        logger.info("faq_entries_fetched", count=len(entries))
+        return entries
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("get_faq_entries_error", error=str(e)[:100])
+        return []
+
+
+async def create_faq_entry(entry: FAQEntry) -> bool:
+    """Create new FAQ entry in Firestore."""
+    if firebase_circuit.state == CircuitState.OPEN:
+        return False
+
+    try:
+        db = get_db()
+        doc_ref = db.collection("faq_entries").document(entry.id)
+
+        doc_ref.set({
+            "patterns": entry.patterns,
+            "answer": entry.answer,
+            "category": entry.category,
+            "enabled": entry.enabled,
+            "embedding": entry.embedding,
+            "updated_at": datetime.utcnow()
+        })
+
+        firebase_circuit._record_success()
+        logger.info("faq_entry_created", faq_id=entry.id)
+        return True
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("create_faq_entry_error", error=str(e)[:100])
+        return False
+
+
+async def update_faq_entry(faq_id: str, updates: dict) -> bool:
+    """Update FAQ entry fields."""
+    if firebase_circuit.state == CircuitState.OPEN:
+        return False
+
+    try:
+        db = get_db()
+        doc_ref = db.collection("faq_entries").document(faq_id)
+
+        # Check exists
+        if not doc_ref.get().exists:
+            return False
+
+        updates["updated_at"] = datetime.utcnow()
+        doc_ref.update(updates)
+
+        firebase_circuit._record_success()
+        logger.info("faq_entry_updated", faq_id=faq_id)
+        return True
+
+    except Exception as e:
+        firebase_circuit._record_failure(e)
+        logger.error("update_faq_entry_error", error=str(e)[:100])
+        return False
+
+
+async def delete_faq_entry(faq_id: str) -> bool:
+    """Soft delete FAQ entry (set enabled=False)."""
+    return await update_faq_entry(faq_id, {"enabled": False})
+

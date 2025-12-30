@@ -28,6 +28,7 @@ COLLECTIONS = {
     "conversations": "Chat history for context",
     "errors": "Error pattern matching",
     "tasks": "Task context for similar task lookup",
+    "user_activities": "User activity patterns for learning",
 }
 
 
@@ -64,7 +65,7 @@ def init_collections():
 
     from qdrant_client.http import models
 
-    collections = ["conversations", "knowledge", "tasks"]
+    collections = ["conversations", "knowledge", "tasks", "user_activities"]
     created = []
 
     for name in collections:
@@ -636,3 +637,215 @@ def health_check() -> Dict[str, Any]:
         }
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+# ==================== User Activities ====================
+
+async def store_user_activity(
+    user_id: int,
+    action_type: str,
+    summary: str,
+    embedding: List[float],
+    skill: Optional[str] = None,
+    duration_ms: int = 0
+) -> Optional[str]:
+    """Store user activity for pattern learning."""
+    client = get_client()
+    if not client:
+        return None
+
+    from qdrant_client.http import models
+
+    point_id = f"{user_id}_{datetime.utcnow().timestamp()}"
+
+    try:
+        client.upsert(
+            collection_name="user_activities",
+            points=[
+                models.PointStruct(
+                    id=point_id,
+                    vector=embedding,
+                    payload={
+                        "user_id": user_id,
+                        "action_type": action_type,
+                        "skill": skill,
+                        "summary": summary,
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "hour_of_day": datetime.utcnow().hour,
+                        "day_of_week": datetime.utcnow().weekday(),
+                        "duration_ms": duration_ms
+                    }
+                )
+            ]
+        )
+        return point_id
+    except Exception as e:
+        logger.error("store_user_activity_error", error=str(e)[:50])
+        return None
+
+
+async def search_user_activities(
+    user_id: int,
+    embedding: List[float],
+    limit: int = 5
+) -> List[Dict]:
+    """Search user's past activities."""
+    client = get_client()
+    if not client:
+        return []
+
+    from qdrant_client.http import models
+
+    try:
+        filter_conditions = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="user_id",
+                    match=models.MatchValue(value=user_id)
+                )
+            ]
+        )
+
+        results = client.search(
+            collection_name="user_activities",
+            query_vector=embedding,
+            query_filter=filter_conditions,
+            limit=limit
+        )
+
+        return [
+            {
+                "id": r.id,
+                "score": r.score,
+                **r.payload
+            }
+            for r in results
+        ]
+    except Exception as e:
+        logger.error("search_user_activities_error", error=str(e)[:50])
+        return []
+
+
+# ==================== FAQ Semantic Search ====================
+
+FAQ_COLLECTION = "faq_embeddings"
+
+
+def ensure_faq_collection():
+    """Create FAQ collection if not exists."""
+    client = get_client()
+    if not client:
+        return False
+
+    from qdrant_client.http import models
+
+    try:
+        client.get_collection(FAQ_COLLECTION)
+        return True
+    except Exception:
+        try:
+            client.create_collection(
+                collection_name=FAQ_COLLECTION,
+                vectors_config=models.VectorParams(
+                    size=VECTOR_DIM,
+                    distance=models.Distance.COSINE
+                )
+            )
+            logger.info("faq_collection_created")
+            return True
+        except Exception as e:
+            logger.error("faq_collection_error", error=str(e)[:50])
+            return False
+
+
+async def upsert_faq_embedding(faq_id: str, embedding: List[float], answer: str) -> bool:
+    """Upsert FAQ entry embedding to Qdrant."""
+    client = get_client()
+    if not client:
+        return False
+
+    ensure_faq_collection()
+
+    from qdrant_client.http import models
+
+    try:
+        # Use stable int ID from faq_id hash
+        point_id = abs(hash(faq_id)) % (2**63)
+
+        client.upsert(
+            collection_name=FAQ_COLLECTION,
+            points=[
+                models.PointStruct(
+                    id=point_id,
+                    vector=embedding,
+                    payload={
+                        "faq_id": faq_id,
+                        "answer": answer
+                    }
+                )
+            ]
+        )
+        logger.debug("faq_embedding_upserted", faq_id=faq_id)
+        return True
+    except Exception as e:
+        logger.error("upsert_faq_embedding_error", error=str(e)[:50])
+        return False
+
+
+async def search_faq_embedding(embedding: List[float], threshold: float = 0.9) -> Optional[Dict]:
+    """Search FAQ by embedding, return match if above threshold."""
+    client = get_client()
+    if not client:
+        return None
+
+    ensure_faq_collection()
+
+    try:
+        results = client.search(
+            collection_name=FAQ_COLLECTION,
+            query_vector=embedding,
+            limit=1,
+            score_threshold=threshold
+        )
+
+        if results:
+            return {
+                "faq_id": results[0].payload.get("faq_id"),
+                "answer": results[0].payload.get("answer"),
+                "score": results[0].score
+            }
+        return None
+    except Exception as e:
+        logger.error("search_faq_embedding_error", error=str(e)[:50])
+        return None
+
+
+async def delete_faq_embedding(faq_id: str) -> bool:
+    """Delete FAQ embedding by ID."""
+    client = get_client()
+    if not client:
+        return False
+
+    from qdrant_client.http import models
+
+    try:
+        point_id = abs(hash(faq_id)) % (2**63)
+        client.delete(
+            collection_name=FAQ_COLLECTION,
+            points_selector=models.PointIdsList(points=[point_id])
+        )
+        logger.debug("faq_embedding_deleted", faq_id=faq_id)
+        return True
+    except Exception as e:
+        logger.error("delete_faq_embedding_error", error=str(e)[:50])
+        return False
+
+
+async def get_text_embedding(text: str) -> Optional[List[float]]:
+    """Get embedding for text using existing embedding service."""
+    try:
+        from src.services.embeddings import get_embedding
+        return get_embedding(text)
+    except Exception as e:
+        logger.error("get_text_embedding_error", error=str(e)[:50])
+        return None
