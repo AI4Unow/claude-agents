@@ -6,13 +6,32 @@ Classifies messages into three intent types for routing:
 - ORCHESTRATE: Multi-skill orchestrator execution
 """
 import re
-from typing import Literal, Optional
+from dataclasses import dataclass, field
+from typing import Dict, Literal, Optional
 
 from src.utils.logging import get_logger
 
 logger = get_logger()
 
 IntentType = Literal["chat", "skill", "orchestrate"]
+
+
+@dataclass
+class IntentResult:
+    """Result from enhanced intent detection."""
+    intent: IntentType
+    skill: Optional[str] = None
+    params: Dict[str, str] = field(default_factory=dict)
+    confidence: float = 1.0
+    reasoning: str = ""
+
+    @property
+    def is_skill(self) -> bool:
+        return self.intent == "skill" and self.skill is not None
+
+    @property
+    def needs_llm_fallback(self) -> bool:
+        return self.confidence < 0.7
 
 # Keywords indicating user wants a specific skill capability
 SKILL_KEYWORDS = {
@@ -151,3 +170,135 @@ async def classify_intent(message: str) -> IntentType:
     """
     import asyncio
     return await asyncio.to_thread(classify_intent_sync, message)
+
+
+def extract_params_simple(message: str, skill_name: str) -> Dict[str, str]:
+    """Simple parameter extraction based on skill type.
+
+    Args:
+        message: User message
+        skill_name: Detected skill name
+
+    Returns:
+        Extracted parameters dict
+    """
+    params = {}
+    msg_lower = message.lower()
+
+    # Research skills - extract topic
+    if "research" in skill_name.lower():
+        prefixes = ["research", "find out about", "investigate", "learn about"]
+        for prefix in prefixes:
+            if prefix in msg_lower:
+                idx = msg_lower.find(prefix) + len(prefix)
+                topic = message[idx:].strip()
+                if topic:
+                    params["topic"] = topic[:200]
+                break
+
+    # Code skills - detect language
+    elif "code" in skill_name.lower():
+        languages = ["python", "javascript", "typescript", "go", "rust", "java"]
+        for lang in languages:
+            if lang in msg_lower:
+                params["language"] = lang
+                break
+
+    return params
+
+
+async def semantic_skill_match(message: str, threshold: float = 0.7) -> Optional[IntentResult]:
+    """Match message to skill using Qdrant semantic search.
+
+    Args:
+        message: User message
+        threshold: Minimum similarity score
+
+    Returns:
+        IntentResult if high-confidence match found
+    """
+    from src.core.router import SkillRouter
+
+    try:
+        router = SkillRouter(min_score=threshold)
+        matches = await router.route(message, limit=1)
+
+        if not matches:
+            return None
+
+        best = matches[0]
+        if best.score >= threshold:
+            params = extract_params_simple(message, best.skill_name)
+            return IntentResult(
+                intent="skill",
+                skill=best.skill_name,
+                params=params,
+                confidence=best.score,
+                reasoning=f"Semantic match: {best.description[:50]}"
+            )
+    except Exception as e:
+        logger.error("semantic_skill_match_error", error=str(e)[:50])
+
+    return None
+
+
+async def detect_intent_with_params(
+    message: str,
+    semantic_threshold: float = 0.7,
+    llm_fallback_threshold: float = 0.7
+) -> IntentResult:
+    """Unified intent detection with skill and parameter extraction.
+
+    Strategy:
+    1. Fast keyword check for obvious intents
+    2. Semantic skill matching (Qdrant)
+    3. LLM fallback for ambiguous cases
+
+    Args:
+        message: User message
+        semantic_threshold: Min score for semantic match
+        llm_fallback_threshold: Trigger LLM if below this
+
+    Returns:
+        IntentResult with intent, skill, params, confidence
+    """
+    # Step 1: Fast keyword check
+    fast_result = fast_intent_check(message)
+    if fast_result == "chat":
+        return IntentResult(intent="chat", confidence=0.95)
+
+    if fast_result == "orchestrate":
+        return IntentResult(
+            intent="orchestrate",
+            confidence=0.85,
+            reasoning="Complex task keywords detected"
+        )
+
+    # Step 2: Semantic skill matching
+    semantic_result = await semantic_skill_match(message, semantic_threshold)
+
+    if semantic_result and semantic_result.confidence >= llm_fallback_threshold:
+        logger.debug(
+            "intent_semantic_match",
+            skill=semantic_result.skill,
+            confidence=semantic_result.confidence
+        )
+        return semantic_result
+
+    # Step 3: If skill keywords detected but no semantic match
+    if fast_result == "skill":
+        # Try lower threshold
+        lower_match = await semantic_skill_match(message, threshold=0.5)
+        if lower_match:
+            return lower_match
+
+        # Default skill intent without specific skill
+        return IntentResult(
+            intent="skill",
+            confidence=0.6,
+            reasoning="Skill keywords detected"
+        )
+
+    # Step 4: Default to chat
+    return IntentResult(intent="chat", confidence=0.6)
+

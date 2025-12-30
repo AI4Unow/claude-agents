@@ -25,6 +25,7 @@ logger = get_logger()
 # Module-level locks for thread safety
 _singleton_lock = threading.Lock()
 _cache_lock = threading.Lock()
+_rate_limit_lock = threading.Lock()
 
 # Cache size limit
 MAX_CACHE_SIZE = 1000
@@ -420,6 +421,9 @@ class StateManager:
     def check_rate_limit(self, user_id: int, tier: str) -> tuple:
         """Check if user is within rate limit.
 
+        Thread Safety:
+            Protected by _rate_limit_lock to prevent race conditions
+
         Returns:
             (is_allowed: bool, seconds_until_reset: int)
         """
@@ -429,22 +433,23 @@ class StateManager:
         now = time.time()
         window_start = now - 60  # 1 minute window
 
-        # Clean old entries
-        self._rate_counters[user_id] = [
-            ts for ts in self._rate_counters[user_id]
-            if ts > window_start
-        ]
+        with _rate_limit_lock:
+            # Clean old entries
+            self._rate_counters[user_id] = [
+                ts for ts in self._rate_counters[user_id]
+                if ts > window_start
+            ]
 
-        current_count = len(self._rate_counters[user_id])
+            current_count = len(self._rate_counters[user_id])
 
-        if current_count >= limit:
-            oldest = min(self._rate_counters[user_id]) if self._rate_counters[user_id] else now
-            reset_in = int(oldest + 60 - now)
-            return False, max(1, reset_in)
+            if current_count >= limit:
+                oldest = min(self._rate_counters[user_id]) if self._rate_counters[user_id] else now
+                reset_in = int(oldest + 60 - now)
+                return False, max(1, reset_in)
 
-        # Record this request
-        self._rate_counters[user_id].append(now)
-        return True, 0
+            # Record this request
+            self._rate_counters[user_id].append(now)
+            return True, 0
 
     async def invalidate_user_tier(self, user_id: int):
         """Invalidate cached tier after grant/revoke."""
