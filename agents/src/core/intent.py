@@ -36,15 +36,22 @@ class IntentResult:
 # Keywords indicating user wants a specific skill capability
 SKILL_KEYWORDS = {
     # Research
-    "research", "investigate", "deep dive", "find out about",
+    "research", "investigate", "deep dive", "find out about", "look up",
+    "analyze", "study", "explore", "search for",
     # Design/Creative
     "design", "create image", "generate image", "draw", "poster", "logo",
+    "mockup", "wireframe", "ui design", "ux design", "banner",
     # Code
-    "code", "write code", "function", "script",
+    "code", "write code", "function", "script", "program", "debug",
+    "fix code", "refactor", "implement", "algorithm",
     # Content
-    "summarize", "translate", "rewrite", "convert",
+    "summarize", "translate", "rewrite", "convert", "paraphrase",
+    "proofread", "edit text", "format", "outline",
     # Media
-    "download video", "enhance image",
+    "download video", "enhance image", "compress", "resize",
+    "extract audio", "convert video",
+    # Data
+    "analyze data", "chart", "graph", "statistics", "parse",
 }
 
 # Keywords indicating complex multi-step task
@@ -52,16 +59,22 @@ ORCHESTRATE_KEYWORDS = {
     "build", "develop", "implement", "architect", "create system",
     "plan", "design system", "set up", "configure",
     "refactor", "migrate", "integrate",
+    "deploy", "automate", "pipeline", "workflow",
+    "full stack", "end to end", "complete solution",
 }
 
-# Patterns for simple chat (bypass LLM)
-CHAT_PATTERNS = [
-    r"^(hi|hello|hey|thanks|thank you|ok|okay|bye|goodbye)[\s!?.]*$",
+# Patterns for simple chat (bypass LLM) - compiled for performance
+_CHAT_PATTERNS_RAW = [
+    r"^(hi|hello|hey|thanks|thank you|ok|okay|bye|goodbye|gm|gn|gg)[\s!?.]*$",
     r"^what (is|are|was|were) ",
     r"^(who|where|when|why|how) (is|are|was|were|do|does|did|can|could|would|should) ",
-    r"^(yes|no|sure|nope|yep|yeah)[\s!?.]*$",
-    r"^(define|explain|describe) \w+$",
+    r"^(yes|no|sure|nope|yep|yeah|nah)[\s!?.]*$",
+    r"^(define|explain|describe|tell me about) \w+",
+    r"^(can you|could you|would you|please) (help|tell|explain|show)",
+    r"^(what|how) (do|does|can|should) (i|you|we|they)",
+    r"^(is|are|was|were|do|does|did|can|will|would|should) ",
 ]
+CHAT_PATTERNS = [re.compile(p, re.IGNORECASE) for p in _CHAT_PATTERNS_RAW]
 
 INTENT_PROMPT = """Classify this message into ONE category:
 
@@ -85,9 +98,9 @@ def fast_intent_check(message: str) -> Optional[IntentType]:
     """
     msg_lower = message.lower()
 
-    # Check chat patterns first (most common)
+    # Check chat patterns first (most common) - uses pre-compiled regex
     for pattern in CHAT_PATTERNS:
-        if re.match(pattern, msg_lower, re.IGNORECASE):
+        if pattern.match(msg_lower):
             return "chat"
 
     # Check orchestrate keywords (most specific)

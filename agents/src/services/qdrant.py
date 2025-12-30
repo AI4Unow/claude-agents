@@ -370,9 +370,17 @@ async def store_skill(
 async def search_skills(
     embedding: List[float],
     limit: int = 3,
-    category: Optional[str] = None
+    category: Optional[str] = None,
+    min_score: float = 0.0
 ) -> List[Dict]:
-    """Find matching skills for routing."""
+    """Find matching skills for routing.
+
+    Args:
+        embedding: Query embedding vector
+        limit: Max number of results
+        category: Optional category filter
+        min_score: Minimum similarity score threshold
+    """
     client = get_client()
     if not client:
         return []
@@ -394,7 +402,8 @@ async def search_skills(
         collection_name="skills",
         query_vector=embedding,
         query_filter=filter_conditions,
-        limit=limit
+        limit=limit,
+        score_threshold=min_score if min_score > 0 else None
     )
 
     return [

@@ -7,7 +7,9 @@ Integrates with existing GeminiClient for consistent auth/error handling.
 import os
 import json
 import tempfile
-from typing import List, Optional
+import hashlib
+import time
+from typing import List, Optional, Dict, Tuple
 
 from src.utils.logging import get_logger
 
@@ -20,6 +22,42 @@ VECTOR_DIM = 3072  # gemini-embedding-001 outputs 3072 dimensions
 _client = None
 _available = None  # Cached availability check
 _credentials_setup = False
+
+# L1 cache for embeddings (TTL: 5 minutes, max 100 entries)
+_embedding_cache: Dict[str, Tuple[List[float], float]] = {}
+_CACHE_TTL = 300  # 5 minutes
+_CACHE_MAX_SIZE = 100
+
+
+def _cache_key(text: str) -> str:
+    """Generate cache key from text."""
+    return hashlib.md5(text.encode()).hexdigest()
+
+
+def _get_cached_embedding(text: str) -> Optional[List[float]]:
+    """Get embedding from L1 cache if valid."""
+    key = _cache_key(text)
+    if key in _embedding_cache:
+        embedding, cached_at = _embedding_cache[key]
+        if time.time() - cached_at < _CACHE_TTL:
+            logger.debug("embedding_cache_hit", key=key[:8])
+            return embedding
+        # Expired - remove
+        del _embedding_cache[key]
+    return None
+
+
+def _cache_embedding(text: str, embedding: List[float]) -> None:
+    """Store embedding in L1 cache."""
+    global _embedding_cache
+    # Evict oldest if at capacity
+    if len(_embedding_cache) >= _CACHE_MAX_SIZE:
+        oldest_key = min(_embedding_cache, key=lambda k: _embedding_cache[k][1])
+        del _embedding_cache[oldest_key]
+
+    key = _cache_key(text)
+    _embedding_cache[key] = (embedding, time.time())
+    logger.debug("embedding_cached", key=key[:8])
 
 
 def _setup_gcp_credentials() -> None:
@@ -93,8 +131,13 @@ def get_embedding(text: str) -> Optional[List[float]]:
         text: Text to embed
 
     Returns:
-        Embedding vector of 768 dimensions, or None on error
+        Embedding vector of 3072 dimensions, or None on error
     """
+    # Check L1 cache first
+    cached = _get_cached_embedding(text)
+    if cached:
+        return cached
+
     try:
         from google.genai import types
 
@@ -110,9 +153,13 @@ def get_embedding(text: str) -> Optional[List[float]]:
             )
         )
 
-        embedding = response.embeddings[0].values
+        embedding = list(response.embeddings[0].values)
         logger.debug("embedding_generated", dim=len(embedding))
-        return list(embedding)
+
+        # Cache for future use
+        _cache_embedding(text, embedding)
+
+        return embedding
 
     except Exception as e:
         logger.error("get_embedding_error", error=str(e)[:100])

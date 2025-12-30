@@ -117,7 +117,7 @@ class SkillRouter:
             List of RouteMatch sorted by score (descending)
         """
         from src.services.embeddings import get_embedding
-        from src.services.qdrant import search_skills, search_with_fallback
+        from src.services.qdrant import search_skills
 
         # Get embedding for request
         try:
@@ -127,21 +127,13 @@ class SkillRouter:
             # Fall back to keyword matching
             return await self._keyword_route(request, limit)
 
-        # Search skills in Qdrant
+        # Search skills in Qdrant with lower threshold to avoid double search
         results = await search_skills(
             embedding=embedding,
-            limit=limit,
-            category=category
+            limit=limit * 2,  # Get more results to filter
+            category=category,
+            min_score=self.min_score * 0.8  # Lower threshold to reduce fallback
         )
-
-        # If no Qdrant results, try fallback
-        if not results:
-            results = await search_with_fallback(
-                collection="skills",
-                embedding=embedding,
-                query_text=request,
-                limit=limit
-            )
 
         matches = []
         for r in results:
@@ -152,6 +144,12 @@ class SkillRouter:
                     score=score,
                     description=r.get("description", "")
                 ))
+                if len(matches) >= limit:
+                    break
+
+        # Only fallback if no matches at all
+        if not matches:
+            return await self._keyword_route(request, limit)
 
         self.logger.info(
             "routing_complete",
