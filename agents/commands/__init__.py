@@ -12,5 +12,6 @@ from commands import admin
 from commands import personalization
 from commands import developer
 from commands import reminders
+from commands import pkm
 
 __all__ = ["command_router"]

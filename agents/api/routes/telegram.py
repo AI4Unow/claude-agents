@@ -30,7 +30,7 @@ async def telegram_webhook(request: Request):
     # Import command router (refactored pattern)
     from commands.router import command_router
     # Auto-register all commands by importing command modules
-    from commands import user, skills, admin, personalization, developer, reminders
+    from commands import user, skills, admin, personalization, developer, reminders, pkm
 
     # Import handlers locally to avoid circular dependency
     import sys

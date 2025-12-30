@@ -29,6 +29,7 @@ COLLECTIONS = {
     "errors": "Error pattern matching",
     "tasks": "Task context for similar task lookup",
     "user_activities": "User activity patterns for learning",
+    "pkm_items": "Personal Knowledge Management items",
 }
 
 
@@ -65,7 +66,7 @@ def init_collections():
 
     from qdrant_client.http import models
 
-    collections = ["conversations", "knowledge", "tasks", "user_activities"]
+    collections = ["conversations", "knowledge", "tasks", "user_activities", "pkm_items"]
     created = []
 
     for name in collections:
@@ -859,3 +860,259 @@ async def get_text_embedding(text: str, for_query: bool = False) -> Optional[Lis
     except Exception as e:
         logger.error("get_text_embedding_error", error=str(e)[:50])
         return None
+
+
+# ==================== PKM Collection ====================
+
+PKM_COLLECTION = "pkm_items"
+
+
+def ensure_pkm_collection():
+    """Create PKM collection if not exists.
+
+    Vector size: 3072 (Gemini embedding dimension)
+    """
+    client = get_client()
+    if not client:
+        return False
+
+    from qdrant_client.http import models
+
+    try:
+        client.get_collection(PKM_COLLECTION)
+        return True
+    except Exception:
+        try:
+            client.create_collection(
+                collection_name=PKM_COLLECTION,
+                vectors_config=models.VectorParams(
+                    size=VECTOR_DIM,
+                    distance=models.Distance.COSINE
+                )
+            )
+            logger.info("pkm_collection_created")
+            return True
+        except Exception as e:
+            logger.error("pkm_collection_error", error=str(e)[:50])
+            return False
+
+
+async def store_pkm_item(
+    user_id: int,
+    item_id: str,
+    content: str,
+    embedding: List[float],
+    item_type: str,
+    status: str,
+    tags: List[str]
+) -> bool:
+    """Store PKM item embedding in Qdrant.
+
+    ID format: pkm_{user_id}_{item_id}
+    Payload: user_id, item_id, type, status, tags, content_preview (200 chars)
+
+    Args:
+        user_id: User ID
+        item_id: Unique item ID from Firebase
+        content: Full item content
+        embedding: Gemini embedding vector (3072 dims)
+        item_type: Item type (note, task, idea, learning)
+        status: Status (active, archived, deleted)
+        tags: List of tags
+
+    Returns:
+        True if successful, False otherwise
+    """
+    client = get_client()
+    if not client:
+        return False
+
+    ensure_pkm_collection()
+
+    from qdrant_client.http import models
+
+    try:
+        # Stable point ID from user_id + item_id
+        point_key = f"pkm_{user_id}_{item_id}"
+        point_id = abs(hash(point_key)) % (2**63)
+
+        # Content preview (first 200 chars)
+        content_preview = content[:200] if len(content) > 200 else content
+
+        client.upsert(
+            collection_name=PKM_COLLECTION,
+            points=[
+                models.PointStruct(
+                    id=point_id,
+                    vector=embedding,
+                    payload={
+                        "user_id": user_id,
+                        "item_id": item_id,
+                        "type": item_type,
+                        "status": status,
+                        "tags": tags,
+                        "content_preview": content_preview,
+                        "updated_at": datetime.utcnow().isoformat()
+                    }
+                )
+            ]
+        )
+        logger.debug("pkm_item_stored", user_id=user_id, item_id=item_id)
+        return True
+    except Exception as e:
+        logger.error("store_pkm_item_error", error=str(e)[:50], user_id=user_id)
+        return False
+
+
+async def search_pkm_items(
+    user_id: int,
+    embedding: List[float],
+    limit: int = 5,
+    status_filter: Optional[str] = None,
+    type_filter: Optional[str] = None
+) -> List[Dict]:
+    """Search user's PKM items by embedding.
+
+    Filter by user_id (required), optionally by status/type.
+
+    Args:
+        user_id: User ID (required filter)
+        embedding: Query embedding vector
+        limit: Max results to return
+        status_filter: Optional status filter (active, archived, deleted)
+        type_filter: Optional type filter (note, task, idea, learning)
+
+    Returns:
+        List of {item_id, score, type, status, tags, content_preview}
+    """
+    client = get_client()
+    if not client:
+        return []
+
+    ensure_pkm_collection()
+
+    from qdrant_client.http import models
+
+    async def _search_internal():
+        # Build filter conditions
+        filter_must = [
+            models.FieldCondition(
+                key="user_id",
+                match=models.MatchValue(value=user_id)
+            )
+        ]
+
+        if status_filter:
+            filter_must.append(
+                models.FieldCondition(
+                    key="status",
+                    match=models.MatchValue(value=status_filter)
+                )
+            )
+
+        if type_filter:
+            filter_must.append(
+                models.FieldCondition(
+                    key="type",
+                    match=models.MatchValue(value=type_filter)
+                )
+            )
+
+        filter_conditions = models.Filter(must=filter_must)
+
+        results = client.search(
+            collection_name=PKM_COLLECTION,
+            query_vector=embedding,
+            query_filter=filter_conditions,
+            limit=limit
+        )
+
+        return [
+            {
+                "item_id": r.payload.get("item_id"),
+                "score": r.score,
+                "type": r.payload.get("type"),
+                "status": r.payload.get("status"),
+                "tags": r.payload.get("tags", []),
+                "content_preview": r.payload.get("content_preview")
+            }
+            for r in results
+        ]
+
+    try:
+        return await qdrant_circuit.call(_search_internal, timeout=15.0)
+    except CircuitOpenError:
+        logger.warning("qdrant_circuit_open", operation="search_pkm_items")
+        return []
+    except Exception as e:
+        logger.error("search_pkm_items_error", error=str(e)[:50], user_id=user_id)
+        return []
+
+
+async def delete_pkm_item(user_id: int, item_id: str) -> bool:
+    """Delete PKM item from Qdrant.
+
+    Args:
+        user_id: User ID
+        item_id: Item ID to delete
+
+    Returns:
+        True if successful, False otherwise
+    """
+    client = get_client()
+    if not client:
+        return False
+
+    from qdrant_client.http import models
+
+    try:
+        point_key = f"pkm_{user_id}_{item_id}"
+        point_id = abs(hash(point_key)) % (2**63)
+
+        client.delete(
+            collection_name=PKM_COLLECTION,
+            points_selector=models.PointIdsList(points=[point_id])
+        )
+        logger.debug("pkm_item_deleted", user_id=user_id, item_id=item_id)
+        return True
+    except Exception as e:
+        logger.error("delete_pkm_item_error", error=str(e)[:50], user_id=user_id)
+        return False
+
+
+async def update_pkm_item_status(user_id: int, item_id: str, new_status: str) -> bool:
+    """Update item status in Qdrant payload.
+
+    Uses set_payload to update only the status field without re-embedding.
+
+    Args:
+        user_id: User ID
+        item_id: Item ID
+        new_status: New status value (active, archived, deleted)
+
+    Returns:
+        True if successful, False otherwise
+    """
+    client = get_client()
+    if not client:
+        return False
+
+    from qdrant_client.http import models
+
+    try:
+        point_key = f"pkm_{user_id}_{item_id}"
+        point_id = abs(hash(point_key)) % (2**63)
+
+        client.set_payload(
+            collection_name=PKM_COLLECTION,
+            payload={
+                "status": new_status,
+                "updated_at": datetime.utcnow().isoformat()
+            },
+            points=[point_id]
+        )
+        logger.debug("pkm_item_status_updated", user_id=user_id, item_id=item_id, status=new_status)
+        return True
+    except Exception as e:
+        logger.error("update_pkm_item_status_error", error=str(e)[:50], user_id=user_id)
+        return False
