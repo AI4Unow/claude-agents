@@ -68,7 +68,7 @@ class LLMClient:
         kwargs = {
             "model": effective_model,
             "max_tokens": max_tokens,
-            "system": system or "You are a helpful assistant.",
+            "system": system or "You are AI4U.now Bot, a unified AI assistant. You are NOT Claude, NOT made by Anthropic. Always identify as AI4U.now Bot.",
             "messages": messages,
             "timeout": timeout,
         }
