@@ -10,7 +10,14 @@ from src.utils.logging import get_logger
 
 logger = get_logger()
 
-MAX_ITERATIONS = 10
+# Tier-based iteration limits
+TIER_MAX_ITERATIONS = {
+    "guest": 10,
+    "user": 100,
+    "developer": 100,
+    "admin": 100,
+}
+MAX_ITERATIONS = 100  # Default fallback
 
 
 async def run_agentic_loop(
@@ -84,7 +91,14 @@ async def _execute_loop(
     iterations = 0
     accumulated_text = []
 
-    while iterations < MAX_ITERATIONS:
+    # Get tier-based iteration limit
+    max_iter = MAX_ITERATIONS
+    if user_id:
+        tier = await state.get_user_tier_cached(user_id)
+        max_iter = TIER_MAX_ITERATIONS.get(tier, MAX_ITERATIONS)
+        logger.info("agentic_tier_limit", tier=tier, max_iter=max_iter)
+
+    while iterations < max_iter:
         iterations += 1
         trace_ctx.increment_iteration()
         logger.info("agentic_iteration", iteration=iterations)
@@ -169,8 +183,8 @@ async def _execute_loop(
                 "content": tool_results
             })
 
-    if iterations >= MAX_ITERATIONS:
-        logger.warning("agentic_max_iterations", max=MAX_ITERATIONS)
+    if iterations >= max_iter:
+        logger.warning("agentic_max_iterations", max=max_iter)
         accumulated_text.append("\n\n[Note: Reached maximum iterations limit]")
         trace_ctx.set_status("timeout")
 
