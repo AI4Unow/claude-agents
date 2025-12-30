@@ -23,6 +23,7 @@ See [docs/project-overview-pdr.md](docs/project-overview-pdr.md) for full requir
 - Skill auto-sync watcher with launchd
 - **Personalization system** (profiles, context, macros, activity learning)
 - **Smart FAQ system** (hybrid keyword + semantic matching)
+- **PKM Second Brain** (capture, organize, semantic search)
 
 ### LLM Models (via ai4u.now API)
 | Purpose | Model |
