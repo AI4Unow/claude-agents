@@ -491,14 +491,13 @@ research-reports/{userId}/{reportId}.md
 
 | Purpose | Model | File |
 |---------|-------|------|
-| Default (agentic) | `kiro-claude-opus-4-5-agentic` | `llm.py:17` |
-| Simple chat | `kiro-claude-haiku-4-5` | `main.py` |
-| Classifiers | `kiro-claude-haiku-4-5` | `complexity.py`, `intent.py` |
-| Vision | `kiro-claude-opus-4-5-agentic` | `llm.py:119` |
+| All calls | `kiro-claude-opus-4-5-agentic` | `llm.py`, `main.py`, `complexity.py`, `intent.py` |
 
-Available models on API:
+Note: Haiku model not available via Anthropic SDK on ai4u.now proxy.
+
+Available models on API (OpenAI SDK only):
 - **Claude**: `kiro-claude-opus-4-5`, `kiro-claude-sonnet-4-5`, `kiro-claude-sonnet-4`, `kiro-claude-haiku-4-5`
-- **Claude Agentic**: `kiro-claude-opus-4-5-agentic`, `kiro-claude-sonnet-4-5-agentic`, `kiro-claude-sonnet-4-agentic`, `kiro-claude-haiku-4-5-agentic`
+- **Claude Agentic**: `kiro-claude-opus-4-5-agentic`, `kiro-claude-sonnet-4-5-agentic`, `kiro-claude-sonnet-4-agentic`
 - **Gemini**: `gemini-3-flash-preview`, `gemini-3-pro-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`
 
 ## Related Documents

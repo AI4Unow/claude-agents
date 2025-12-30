@@ -25,10 +25,9 @@ See [docs/project-overview-pdr.md](docs/project-overview-pdr.md) for full requir
 ### LLM Models (via ai4u.now API)
 | Purpose | Model |
 |---------|-------|
-| Default (agentic) | `kiro-claude-opus-4-5-agentic` |
-| Simple chat | `kiro-claude-haiku-4-5` |
-| Classifiers | `kiro-claude-haiku-4-5` |
-| Vision | `kiro-claude-opus-4-5-agentic` |
+| All calls | `kiro-claude-opus-4-5-agentic` |
+
+Note: Haiku not available via Anthropic SDK on this proxy.
 
 ## Build & Development Commands
 
