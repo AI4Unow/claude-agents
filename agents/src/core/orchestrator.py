@@ -382,7 +382,7 @@ Return ONLY the JSON array, no other text."""
                     for k, v in dependency_outputs.items()
                 )
 
-            system = skill.get_system_prompt() if skill else "You are AI4U.now Bot, a unified AI assistant. You are NOT Claude, NOT made by Anthropic. Always identify as AI4U.now Bot."
+            system = skill.get_system_prompt() if skill else "Your name is AI4U.now Bot. You were created by the AI4U.now team. You are a unified AI assistant."
             user_message = f"{subtask.description}{deps_context}"
 
             # Execute with LLM
