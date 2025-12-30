@@ -11,15 +11,17 @@ LOCAL DEVELOPMENT                         MODAL CLOUD
 │                 │                      │                                     │
 │ agents/         │    modal deploy      │  ┌─────────────────────────────────┐│
 │ ├── main.py     │ ──────────────────► │  │  FastAPI Web App                ││
-│ ├── src/        │                      │  │  ├── /webhook/telegram          ││
-│ │   ├── agents/ │                      │  │  ├── /webhook/github            ││
-│ │   ├── services│                      │  │  ├── /api/skill                 ││
-│ │   ├── tools/  │                      │  │  ├── /api/skills                ││
-│ │   └── core/   │                      │  │  └── /api/content               ││
-│ └── skills/     │                      │  │                                 ││
-│                 │                      │  │  Cron Jobs:                     ││
+│ ├── api/        │                      │  │  ├── /webhook/telegram          ││
+│ ├── commands/   │                      │  │  ├── /webhook/whatsapp          ││
+│ ├── src/        │                      │  │  ├── /webhook/github            ││
+│ │   ├── agents/ │                      │  │  ├── /api/skill                 ││
+│ │   ├── services│                      │  │  ├── /api/skills                ││
+│ │   ├── tools/  │                      │  │  └── /api/reports               ││
+│ │   └── core/   │                      │  │                                 ││
+│ └── skills/     │                      │  │  Cron Jobs:                     ││
 │                 │                      │  │  ├── github_monitor (hourly)    ││
-│                 │                      │  │  └── daily_summary (1 AM UTC)   ││
+│                 │                      │  │  ├── daily_summary (1 AM UTC)   ││
+│                 │                      │  │  └── cleanup_content (3 AM UTC) ││
 │                 │                      │  └─────────────────────────────────┘│
 │                 │    modal secrets     │                                     │
 │                 │ ──────────────────► │  ┌─────────────────────────────────┐│
@@ -28,7 +30,7 @@ LOCAL DEVELOPMENT                         MODAL CLOUD
                                          │  │  telegram-chat/info.md          ││
                                          │  │  github/info.md                 ││
                                          │  │  planning/info.md               ││
-                                         │  │  ... (25+ skills)               ││
+                                         │  │  ... (53 skills)                ││
                                          │  │                                 ││
                                          │  │  Agents READ and WRITE here     ││
                                          │  │  Self-improvement persists      ││
@@ -41,6 +43,11 @@ LOCAL DEVELOPMENT                         MODAL CLOUD
           │  TELEGRAM API   │                   │   FIREBASE  │   │QDRANT CLOUD │
           │  (Chat)         │                   │  (State)    │   │  (Memory)   │
           └─────────────────┘                   └─────────────┘   └─────────────┘
+                    │
+          ┌─────────────────┐
+          │  WHATSAPP API   │
+          │  (Evolution)    │
+          └─────────────────┘
 ```
 
 ## Component Descriptions
@@ -60,7 +67,9 @@ LOCAL DEVELOPMENT                         MODAL CLOUD
 | Service | Purpose | Details |
 |---------|---------|---------|
 | Telegram Bot API | Chat interface | User messaging |
+| WhatsApp Evolution API | Alternative chat | User messaging via WhatsApp |
 | Firebase Firestore | State, task queue | Free tier |
+| Firebase Storage | Reports, content files | 24h signed URLs, 7-day retention |
 | Qdrant Cloud | Vector memory | Semantic search |
 | Anthropic API | Claude LLM | Via ai4u.now proxy |
 | Exa API | Web search | Primary search |
@@ -489,7 +498,7 @@ firestore/
 
 ```
 agents/
-├── main.py                          # Modal app entry, route includes (~150 lines)
+├── main.py                          # Modal app entry, route includes (~2,000 lines)
 ├── api/                             # FastAPI layer
 │   ├── __init__.py
 │   ├── app.py                       # App factory, middleware
@@ -497,6 +506,7 @@ agents/
 │   └── routes/
 │       ├── health.py                # /health endpoint
 │       ├── telegram.py              # /webhook/telegram
+│       ├── whatsapp.py              # /webhook/whatsapp (Evolution API)
 │       ├── github.py                # /webhook/github
 │       ├── skills.py                # /api/skill, /api/skills
 │       └── reports.py               # /api/reports
@@ -508,40 +518,47 @@ agents/
 │   ├── admin.py                     # /grant, /revoke, /faq, /admin
 │   ├── personalization.py           # /profile, /context, /macro, /macros, /activity
 │   ├── developer.py                 # /traces, /trace, /circuits, /improve
+│   ├── pkm.py                       # /capture, /inbox, /notes, /tasks (PKM)
 │   └── reminders.py                 # /remind, /reminders
 ├── validators/                      # Input validation
 │   └── input.py                     # InputValidator: skill names, text, FAQ patterns
 ├── config/                          # Configuration
 │   └── env.py                       # Admin validation, env helpers
 ├── src/
-│   ├── core/                        # Core framework
+│   ├── core/                        # Core framework (12 modules)
 │   │   ├── state.py                 # StateManager (L1 cache + L2 Firebase)
 │   │   ├── resilience.py            # Circuit breakers (7)
 │   │   ├── trace.py                 # TraceContext
-│   │   └── improvement.py           # Self-improvement proposals
+│   │   ├── improvement.py           # Self-improvement proposals
+│   │   ├── faq.py                   # Smart FAQ (keyword + semantic)
+│   │   └── suggestions.py           # Proactive suggestions
 │   ├── services/
-│   │   ├── firebase/                # Firebase domain services
+│   │   ├── firebase/                # Firebase domain services (12 modules)
 │   │   │   ├── _client.py           # Thread-safe Firebase init (lru_cache)
 │   │   │   ├── _circuit.py          # @with_firebase_circuit decorator
 │   │   │   ├── users.py             # User CRUD
 │   │   │   ├── tasks.py             # Task queue
 │   │   │   ├── tiers.py             # User tier system
 │   │   │   ├── faq.py               # FAQ management
-│   │   │   ├── reports.py           # Firebase Storage reports
+│   │   │   ├── reports.py           # Firebase Storage reports + content files
 │   │   │   ├── reminders.py         # Reminder scheduling
 │   │   │   ├── local_tasks.py       # Local skill task queue
+│   │   │   ├── pkm.py               # PKM data persistence
 │   │   │   ├── ii_framework.py      # Temporal entities, decisions
 │   │   │   ├── tokens.py            # OAuth tokens
 │   │   │   └── __init__.py          # Backward compatibility re-exports
 │   │   ├── llm.py                   # Claude API client
 │   │   ├── telegram.py              # Telegram Bot API
-│   │   └── gemini.py                # Gemini API (vision, grounding, thinking)
+│   │   ├── evolution.py             # WhatsApp Evolution API
+│   │   ├── gemini.py                # Gemini API (vision, grounding, thinking)
+│   │   └── pkm.py                   # PKM logic, classification, semantic search
 │   ├── skills/                      # Skill system
 │   │   └── registry.py              # SkillRegistry with progressive disclosure
 │   └── tools/                       # Tool implementations
+│       ├── gemini_tools.py          # Gemini skill handlers (with download links)
 │       ├── web_search.py            # Exa + Tavily search
 │       └── code_exec.py             # Python execution
-└── skills/                          # 55 skill info.md files
+└── skills/                          # 53 skill info.md files
 ```
 
 ### Layer Responsibilities

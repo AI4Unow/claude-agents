@@ -12,13 +12,16 @@ Multi-agent system using the **II Framework (Information & Implementation)** dep
 - 7 circuit breakers (claude, exa, tavily, firebase, qdrant, telegram, gemini)
 - Execution tracing with tool-level timing
 - Self-improvement loop with Telegram admin approval
-- 53 skills (8 local, 40+ remote, 7 hybrid deployment)
+- 53 skills (8 local, 43 remote, 2 hybrid deployment)
 - Gemini API integration (deep research, grounding, vision, thinking)
 - Smart FAQ system with hybrid keyword+semantic matching
-- User personalization (profiles, preferences, language detection)
+- User personalization (profiles, context, macros, activity learning)
 - Gemini embeddings (gemini-embedding-001, 3072 dimensions)
-- Firebase Storage for research reports
+- Firebase Storage for research reports + content downloads (24h links)
 - User tier system (guest, user, developer, admin)
+- Command Router pattern (decorator-based registration)
+- PKM Second Brain (capture, organize, semantic search)
+- WhatsApp Evolution API integration
 - Stress test framework (Locust + chaos engineering)
 
 ## Agents
@@ -62,6 +65,7 @@ modal app logs claude-agents
 |----------|--------|---------|
 | `/health` | GET | Health check with circuit status |
 | `/webhook/telegram` | POST | Telegram bot webhook |
+| `/webhook/whatsapp` | POST | WhatsApp Evolution API webhook |
 | `/webhook/github` | POST | GitHub webhook |
 | `/api/skill` | POST | Execute skill (simple/routed/orchestrated) |
 | `/api/skills` | GET | List available skills |
@@ -92,8 +96,8 @@ modal app logs claude-agents
 
 53 skills with deployment types:
 - **Local** (8): canvas-design, docx, xlsx, pptx, pdf, media-processing, image-enhancer, video-downloader
-- **Remote** (40+): planning, debugging, research, code-review, gemini-*, backend-dev, frontend-dev, mobile-dev, ui-ux-pro-max, ai-multimodal, automation skills
-- **Hybrid** (7): better-auth, chrome-devtools, mcp-builder, mcp-management, repomix, sequential-thinking, webapp-testing
+- **Remote** (43): planning, debugging, research, code-review, gemini-*, backend-dev, frontend-dev, mobile-dev, ui-ux-pro-max, ai-multimodal, automation skills
+- **Hybrid** (2): repomix, sequential-thinking
 
 ### Gemini Skills (New)
 | Skill | Description |
@@ -107,30 +111,36 @@ modal app logs claude-agents
 
 ```
 agents/
-├── main.py                    # Modal app entry point (2,608 lines)
+├── main.py                    # Modal app entry point (~2,000 lines)
+├── api/                       # FastAPI routes (modular)
+│   ├── routes/                # Route handlers
+│   │   ├── health.py          # Health check
+│   │   ├── telegram.py        # Telegram webhook
+│   │   ├── whatsapp.py        # WhatsApp webhook
+│   │   └── skills.py          # Skill execution
+├── commands/                  # Command Router pattern
+│   ├── base.py                # Router decorators
+│   └── *.py                   # Command handlers
 ├── src/
 │   ├── agents/                # Agent implementations (4)
-│   ├── services/              # External integrations (8)
-│   │   ├── firebase.py        # Firestore + Storage (~1,200 lines)
-│   │   ├── gemini.py          # Gemini API client (441 lines)
-│   │   ├── llm.py             # Claude API (200 lines)
-│   │   └── telegram.py        # Bot utilities (400 lines)
+│   ├── services/              # External integrations
+│   │   ├── firebase/          # Modular Firebase (12 modules)
+│   │   ├── gemini.py          # Gemini API client
+│   │   ├── llm.py             # Claude API
+│   │   └── evolution.py       # WhatsApp Evolution API
 │   ├── tools/                 # Tool system (8 tools)
 │   │   ├── gemini_tools.py    # Gemini skill handlers
 │   │   ├── web_search.py      # Exa/Tavily
 │   │   └── ...
-│   └── core/                  # II Framework (10 modules)
-│       ├── state.py           # L1 cache + L2 Firebase + personalization
-│       ├── faq.py             # Smart FAQ (keyword + semantic)
+│   └── core/                  # II Framework (12 modules)
+│       ├── state.py           # L1 cache + L2 Firebase
+│       ├── faq.py             # Smart FAQ
 │       ├── resilience.py      # 7 circuit breakers
 │       ├── orchestrator.py    # Multi-skill execution
 │       └── improvement.py     # Self-improvement
 ├── skills/                    # 53 skill info.md files
-├── scripts/                   # 6 utility scripts
-│   ├── seed-faq.py            # FAQ batch seeding
-│   ├── local-executor.py      # Local skill executor
-│   └── pull-improvements.py   # Apply improvements
-└── tests/                     # 22 test files (unit + stress)
+├── scripts/                   # Utility scripts
+└── tests/                     # 37 test files (unit + stress)
 docs/
 ├── project-overview-pdr.md
 ├── system-architecture.md

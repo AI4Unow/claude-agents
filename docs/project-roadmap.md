@@ -90,11 +90,15 @@ The II Framework agents are deployed and operational on Modal.com with full reli
 - [x] Dangerous command blocking
 - [x] Smart FAQ system (hybrid keyword + semantic)
 - [x] PKM Second Brain system (capture, inbox, tasks, search)
-- [x] Modular Firebase service architecture
+- [x] Modular Firebase service architecture (12 modules)
 - [x] Command Router pattern refactor
-- [x] 54 skills total
+- [x] 53 skills total
 - [x] Gemini embeddings (gemini-embedding-001, 3072 dim)
 - [x] Batch embedding for FAQ seeding
+- [x] Content download links (24h signed URLs, 7-day retention)
+- [x] WhatsApp Evolution API integration
+- [x] Daily cleanup cron for expired content
+- [x] 37 test files (unit + stress)
 
 ## Next Priorities
 
@@ -153,11 +157,11 @@ The II Framework agents are deployed and operational on Modal.com with full reli
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| Add comprehensive tests | High | Unit + integration tests |
+| Add comprehensive tests | High | 37 test files, continue expansion |
 | Error handling standardization | Medium | Consistent error types |
 | Documentation for scripts | Medium | pdf/, docx/ skill scripts |
 | Type hints completion | Low | Some services missing |
-| Modularize main.py | Medium | ~2500 lines, needs splitting |
+| Modularize main.py | Done | Reduced to ~2,000 lines with api/, commands/ extraction |
 
 ## Open Questions
 
@@ -171,6 +175,8 @@ Implementation plans in `plans/` directory:
 
 | Plan | Status | Description |
 |------|--------|-------------|
+| `251230-1645-content-download-links/` | ✅ Completed | Content download links for all skills |
+| `251230-1244-whatsapp-evolution-api/` | ✅ Completed | WhatsApp Evolution API integration |
 | `251229-0613-gemini-skills/` | ✅ Completed | Gemini API skills implementation |
 | `251228-1351-skills-sync-categorization/` | ✅ Completed | Skills sync and categorization |
 | `251228-0935-hybrid-agent-architecture/` | ✅ Completed | Hybrid local + Modal architecture |
@@ -191,4 +197,4 @@ Implementation plans in `plans/` directory:
 | Uptime | >99% | Monitoring |
 | Gemini research duration | <60s | ~25-35s |
 | Stress test concurrent users | 100+ | Locust framework ready |
-| Total skills | 60+ | 55 deployed |
+| Total skills | 60+ | 53 deployed |

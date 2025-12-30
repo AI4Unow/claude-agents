@@ -7,12 +7,12 @@
 **Last Updated:** Dec 30, 2025
 
 **Statistics:**
-- **55 skills** in agents/skills/ directory
-- **50+ Python files** in agents/src/
-- **22 test files** (unit + stress tests with Locust framework)
-- **~3,200 lines** in main.py
+- **53 skills** in agents/skills/ directory (8 local, 43 remote, 2 hybrid)
+- **70+ Python files** in agents/src/
+- **37 test files** (unit + stress tests with Locust framework)
+- **~2,000 lines** in main.py
 - **7 circuit breakers** (exa, tavily, firebase, qdrant, claude, telegram, gemini)
-- **14 API endpoints** (health, webhooks, skill execution, reports, traces, circuits)
+- **15 API endpoints** (health, webhooks, skill execution, reports, traces, circuits)
 - **4 agents** (Telegram, GitHub, Data, Content)
 
 **Key Features:**
@@ -20,11 +20,15 @@
 - Self-improvement loop with Telegram admin approval
 - State management with L1/L2 caching
 - Gemini API integration for research, grounding, vision, thinking
-- Firebase Storage for research reports
+- Firebase Storage for research reports + content downloads
 - User tier system (guest, user, developer, admin)
 - Hybrid skill architecture (local, remote, both)
 - **Personalization system** (profiles, context, macros, activity learning)
 - **Smart FAQ system** (hybrid keyword + semantic matching)
+- **PKM Second Brain** (capture, organize, semantic search, tasks)
+- **Command Router Pattern** (decorator-based command registration)
+- **Content download links** (24h signed URLs for all content skills)
+- **WhatsApp Evolution API** (alternative messaging channel)
 
 ## Repository Structure
 
@@ -42,27 +46,49 @@
 │   ├── project-roadmap.md
 │   └── deployment-guide.md
 ├── plans/                         # Implementation plans
-│   ├── 251229-1515-telegram-stress-test/
-│   ├── 251228-0903-skills-categorization/
 │   └── reports/                   # Planning reports
 ├── agents/                        # Main codebase
-    ├── main.py                    # Modal app entry point (~3,200 lines)
+    ├── main.py                    # Modal app entry point (~2,000 lines)
     ├── modal.toml                 # Modal configuration
     ├── requirements.txt           # Python dependencies
+    ├── api/                       # FastAPI routes (modular)
+    │   ├── app.py                 # FastAPI app factory
+    │   ├── dependencies.py        # API dependencies
+    │   └── routes/                # Route handlers
+    │       ├── health.py          # Health check with circuit status
+    │       ├── telegram.py        # Telegram webhook
+    │       ├── whatsapp.py        # WhatsApp Evolution API webhook
+    │       ├── skills.py          # Skill execution endpoints
+    │       ├── reports.py         # Research reports endpoints
+    │       └── admin.py           # Admin endpoints
+    ├── commands/                  # Command router pattern
+    │   ├── base.py                # CommandRouter, CommandDefinition
+    │   ├── router.py              # Command registration
+    │   ├── user.py                # User commands (/start, /help, /status)
+    │   ├── skills.py              # Skill commands (/use, /skills)
+    │   ├── admin.py               # Admin commands (/tier, /circuits)
+    │   ├── developer.py           # Developer commands (/traces)
+    │   ├── reminders.py           # Reminder commands
+    │   ├── personalization.py     # Profile/context commands
+    │   └── pkm.py                 # PKM commands (/capture, /inbox, /notes)
     ├── src/
-    │   ├── agents/                # Agent implementations
+    │   ├── agents/                # Agent implementations (4)
     │   ├── services/              # External service integrations
-    │   ├── tools/                 # Tool system
+    │   │   ├── firebase/          # Modular Firebase (12 modules)
+    │   │   └── ...                # llm, gemini, telegram, evolution, qdrant, etc.
+    │   ├── tools/                 # Tool system (8 tools)
     │   ├── core/                  # II Framework core components
     │   ├── skills/                # Skill registry
     │   ├── models/                # Data models (personalization)
     │   └── utils/                 # Utilities (logging)
-    ├── skills/                    # 55 skill info.md files
-    ├── scripts/                   # Utility scripts
-    └── tests/                     # 22 test files
+    ├── skills/                    # 53 skill info.md files
+    ├── scripts/                   # Utility scripts (6)
+    ├── config/                    # Configuration files
+    ├── validators/                # Input validators
+    └── tests/                     # 37 test files
 ```
 
-## Entry Point (main.py - ~3,200 lines)
+## Entry Point (main.py - ~2,000 lines)
 
 The main Modal app defining:
 - **FastAPI web application** with 14 endpoints
@@ -220,7 +246,7 @@ Features:
 - **User modes**: simple, routed, auto
 - **Conversation persistence**: Last 20 messages per user
 
-## Skills (agents/skills/ - 55 total)
+## Skills (agents/skills/ - 53 total)
 
 Organized by deployment type:
 
@@ -356,7 +382,7 @@ deployment: local|remote|both    # Determines execution environment
 | Document Processing | python-docx, openpyxl, python-pptx, pypdf | Various |
 | Logging | structlog | >=24.1.0 |
 
-## Tests (22 files)
+## Tests (37 files)
 
 ### Unit Tests
 Located in skill scripts:
@@ -511,11 +537,22 @@ reminders/{reminderId}
   ├── message: string
   ├── scheduledAt: timestamp
   └── status: "pending" | "sent"
+
+content_files/{fileId}
+  ├── user_id: number
+  ├── file_id: string
+  ├── blob_path: string
+  ├── content_type: string
+  ├── title: string
+  ├── skill: string
+  ├── created_at: timestamp
+  └── expires_at: timestamp
 ```
 
 Firebase Storage:
 ```
-research-reports/{userId}/{reportId}.md
+reports/{userId}/{reportId}.md     # Research reports (7-day expiry)
+content/{userId}/{fileId}.{ext}    # Generated content (24h link, 7-day retention)
 ```
 
 ## Qdrant Collections
@@ -557,27 +594,39 @@ research-reports/{userId}/{reportId}.md
 
 ## Recent Changes (Dec 30, 2025)
 
-1. **Personalization System** - Complete user personalization layer:
-   - User profiles (tone, domain, tech stack preferences)
-   - Work context (current project, task, blockers, goals)
-   - Personal macros with NLU detection (exact + semantic matching)
-   - Activity logging + pattern analysis
-   - Proactive suggestions engine
-   - GDPR-compliant data deletion (/forget command)
-   - Rate limiting (5s per-macro cooldown)
-   - Dangerous command blocking
+1. **Content Download Links** - Firebase Storage for all content skills:
+   - 24-hour signed URLs for generated content
+   - 7-day file retention with daily cron cleanup
+   - `save_file()` in `firebase/reports.py`
+   - Telegram Download button for completed tasks
 
-2. **Smart FAQ System** - Hybrid keyword + semantic FAQ matching:
-   - `src/core/faq.py` - FAQ engine with Qdrant vector search
-   - `scripts/seed-faq.py` - FAQ seeding script
-   - Keywords + embeddings for dual-phase matching
+2. **WhatsApp Evolution API** - Alternative messaging channel:
+   - `api/routes/whatsapp.py` - Webhook handler
+   - `src/services/evolution.py` - Evolution API client
+   - Media handling (images, audio, video, documents)
 
-3. **New Commands** - 6 personalization commands:
-   - `/profile`, `/context`, `/macro`, `/activity`, `/suggest`, `/forget`
+3. **PKM Second Brain** - Personal knowledge management:
+   - Capture, organize, semantic search, task extraction
+   - `/capture`, `/inbox`, `/notes`, `/tasks` commands
+   - Qdrant vector storage for notes
 
-4. **Model names corrected** - Using kiro-claude-* from ai4u.now API
-5. **Skill auto-sync watcher** - `scripts/skill-sync-watcher.py` with launchd
-6. **55 skills** - With local/remote/both categorization
+4. **Modular Firebase Architecture** - 12 domain-specific modules:
+   - `firebase/` directory with separated concerns
+   - `_client.py`, `_circuit.py` for shared utilities
+   - Domain modules: users, tasks, tiers, faq, reports, etc.
+
+5. **Command Router Pattern** - Decorator-based registration:
+   - `commands/` directory with organized handlers
+   - `@router.command()` decorator
+   - Permission-based command access
+
+6. **Personalization System** - User personalization layer:
+   - Profiles, work context, macros, activity logging
+   - `/profile`, `/context`, `/macro`, `/activity` commands
+
+7. **Smart FAQ System** - Hybrid keyword + semantic matching:
+   - `src/core/faq.py` with Qdrant vector search
+   - Pre-check before intent classification
 
 ## LLM Models (via ai4u.now API)
 
