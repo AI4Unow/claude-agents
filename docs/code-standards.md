@@ -64,6 +64,44 @@ agents/
 └── tests/
 ```
 
+## Command Router Pattern
+
+Commands use a decorator-based registration pattern for modularity and permission control:
+
+```python
+from commands.router import command_router
+
+@command_router.command(
+    name="/mycommand",
+    description="Detailed description for help",
+    permission="user",  # guest|user|developer|admin
+    category="general"
+)
+async def my_command(args: str, user: dict, chat_id: int) -> str:
+    # args: Remaining text after command
+    # user: User profile from state
+    # chat_id: Telegram chat ID
+    return "Response message"
+```
+
+## Circuit Breaker Pattern
+
+Firebase and other external services use a reusable decorator:
+
+```python
+from src.services.firebase._circuit import with_firebase_circuit
+
+@with_firebase_circuit(open_return=None)
+async def fetch_data(id: str):
+    # This will be protected by the firebase circuit breaker
+    ...
+
+@with_firebase_circuit(raise_on_open=True)
+async def save_data(data: dict):
+    # This will raise an exception if the circuit is open
+    ...
+```
+
 ## II Framework Conventions
 
 ### Skill Structure

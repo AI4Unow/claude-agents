@@ -14,8 +14,8 @@ logger = get_logger()
 TIER_MAX_ITERATIONS = {
     "guest": 10,
     "user": 100,
-    "developer": 100,
-    "admin": 100,
+    "developer": 200,
+    "admin": 500,  # Deep research requires many iterations
 }
 MAX_ITERATIONS = 100  # Default fallback
 

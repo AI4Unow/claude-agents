@@ -35,6 +35,7 @@ secrets = [
     modal.Secret.from_name("admin-credentials"),
     modal.Secret.from_name("groq-credentials"),
     modal.Secret.from_name("gcp-credentials"),
+    modal.Secret.from_name("evolution-credentials"),
 ]
 
 # GitHub secret (separate for security)
@@ -92,11 +93,12 @@ async def notify_task_queued(user_id: int, skill_name: str, task_id: str):
 
 # Import web_app and include all routers
 from api.app import web_app
-from api.routes import health, telegram, skills, reports, admin
+from api.routes import health, telegram, whatsapp, skills, reports, admin
 
 # Include all route modules
 web_app.include_router(health.router)
 web_app.include_router(telegram.router)
+web_app.include_router(whatsapp.router)
 web_app.include_router(skills.router)
 web_app.include_router(reports.router)
 web_app.include_router(admin.router)
@@ -610,10 +612,13 @@ async def _run_orchestrated(
 async def process_message(
     text: str,
     user: dict,
-    chat_id: int,
+    chat_id,  # int for Telegram, str for WhatsApp
     message_id: int = None
 ) -> str:
-    """Process a regular message with agentic loop (tools enabled)."""
+    """Process a regular message with agentic loop (tools enabled).
+
+    Supports both Telegram (chat_id: int) and WhatsApp (chat_id: str).
+    """
     import asyncio
     from src.services.agentic import run_agentic_loop
     from src.core.state import get_state_manager
@@ -625,6 +630,10 @@ async def process_message(
     logger = structlog.get_logger()
     state = get_state_manager()
     user_id = user.get("id")
+
+    # Detect platform
+    is_telegram = isinstance(chat_id, int)
+    platform = user.get("platform", "telegram" if is_telegram else "whatsapp")
 
     # Get tier and check rate limit
     tier = await state.get_user_tier_cached(user_id)
@@ -640,26 +649,31 @@ async def process_message(
             from src.core.faq import get_faq_matcher
             faq_answer = await get_faq_matcher().match(text)
             if faq_answer:
-                logger.info("faq_response", user_id=user_id)
+                logger.info("faq_response", user_id=user_id, platform=platform)
                 return faq_answer
         except Exception as e:
             logger.error("faq_check_error", error=str(e)[:50])
             # Continue to normal flow on error
 
-    # React to acknowledge receipt
-    if message_id:
+    # React to acknowledge receipt (Telegram only)
+    if is_telegram and message_id:
         await set_message_reaction(chat_id, message_id, "👀")
 
-    # Send initial progress message
-    progress_msg_id = await send_progress_message(chat_id, "⏳ <i>Processing...</i>")
+    # Send initial progress message (Telegram only)
+    progress_msg_id = 0
+    if is_telegram:
+        progress_msg_id = await send_progress_message(chat_id, "⏳ <i>Processing...</i>")
 
-    # Create progress callback for tool updates
+    # Create progress callback for tool updates (Telegram only)
     async def update_progress(status: str):
-        await edit_progress_message(chat_id, progress_msg_id, status)
+        if is_telegram:
+            await edit_progress_message(chat_id, progress_msg_id, status)
 
-    # Start typing indicator
+    # Start typing indicator (Telegram only)
     cancel_event = asyncio.Event()
-    typing_task = asyncio.create_task(typing_indicator(chat_id, cancel_event))
+    typing_task = None
+    if is_telegram:
+        typing_task = asyncio.create_task(typing_indicator(chat_id, cancel_event))
 
     # Check for pending skill (user selected from /skills menu)
     pending_skill = await state.get_pending_skill(user.get("id"))
@@ -673,12 +687,13 @@ async def process_message(
             result = await execute_skill_simple(pending_skill, text, {"user": user})
             duration_ms = int((time.time() - start) * 1000)
 
-            # Success reaction
-            if message_id:
+            # Success reaction (Telegram only)
+            if is_telegram and message_id:
                 await set_message_reaction(chat_id, message_id, "✅")
 
-            # Update progress with completion (keep as history per validation)
-            await edit_progress_message(chat_id, progress_msg_id, "✅ <i>Complete</i>")
+            # Update progress with completion (Telegram only)
+            if is_telegram:
+                await edit_progress_message(chat_id, progress_msg_id, "✅ <i>Complete</i>")
 
             from src.services.telegram import format_skill_result
             return format_skill_result(pending_skill, result, duration_ms)
@@ -697,27 +712,32 @@ async def process_message(
             explicit = parse_explicit_skill(text, get_registry())
             if explicit:
                 skill_name, remaining_text = explicit
-                await edit_progress_message(chat_id, progress_msg_id, f"🎯 <i>{skill_name}</i>")
+                if is_telegram:
+                    await edit_progress_message(chat_id, progress_msg_id, f"🎯 <i>{skill_name}</i>")
                 result = await execute_skill_simple(skill_name, remaining_text or text, {"user": user})
                 from src.services.telegram import format_skill_result
                 response = format_skill_result(skill_name, result, 0)
             else:
                 # Intent classification (CHAT/SKILL/ORCHESTRATE)
-                await edit_progress_message(chat_id, progress_msg_id, "🧠 <i>Analyzing...</i>")
+                if is_telegram:
+                    await edit_progress_message(chat_id, progress_msg_id, "🧠 <i>Analyzing...</i>")
                 intent = await classify_intent(text)
                 logger.info("intent_detected", intent=intent, mode=mode)
 
                 if intent == "orchestrate":
-                    await edit_progress_message(chat_id, progress_msg_id, "🔧 <i>Orchestrating...</i>")
+                    if is_telegram:
+                        await edit_progress_message(chat_id, progress_msg_id, "🔧 <i>Orchestrating...</i>")
                     response = await _run_orchestrated(text, user, chat_id, progress_msg_id)
                 elif intent == "skill":
                     # Route to best matching skill via semantic search
-                    await edit_progress_message(chat_id, progress_msg_id, "🔍 <i>Finding skill...</i>")
+                    if is_telegram:
+                        await edit_progress_message(chat_id, progress_msg_id, "🔍 <i>Finding skill...</i>")
                     from src.core.router import SkillRouter
                     router = SkillRouter()
                     skill = await router.route_single(text)
                     if skill:
-                        await edit_progress_message(chat_id, progress_msg_id, f"🎯 <i>{skill.name}</i>")
+                        if is_telegram:
+                            await edit_progress_message(chat_id, progress_msg_id, f"🎯 <i>{skill.name}</i>")
                         result = await execute_skill_simple(skill.name, text, {"user": user})
                         from src.services.telegram import format_skill_result
                         response = format_skill_result(skill.name, result, 0)
@@ -745,12 +765,13 @@ async def process_message(
                 model="kiro-claude-opus-4-5-agentic"
             )
 
-        # Success reaction
-        if message_id:
+        # Success reaction (Telegram only)
+        if is_telegram and message_id:
             await set_message_reaction(chat_id, message_id, "✅")
 
-        # Update progress with completion (keep as history per validation)
-        await edit_progress_message(chat_id, progress_msg_id, "✅ <i>Complete</i>")
+        # Update progress with completion (Telegram only)
+        if is_telegram:
+            await edit_progress_message(chat_id, progress_msg_id, "✅ <i>Complete</i>")
 
         # Log activity (fire-and-forget, non-blocking)
         try:
@@ -792,19 +813,21 @@ async def process_message(
     except Exception as e:
         logger.error("agentic_error", error=str(e))
 
-        # Error reaction
-        if message_id:
+        # Error reaction (Telegram only)
+        if is_telegram and message_id:
             await set_message_reaction(chat_id, message_id, "❌")
 
-        # Update progress with error
-        await edit_progress_message(chat_id, progress_msg_id, f"❌ <i>Error: {str(e)[:100]}</i>")
+        # Update progress with error (Telegram only)
+        if is_telegram:
+            await edit_progress_message(chat_id, progress_msg_id, f"❌ <i>Error: {str(e)[:100]}</i>")
 
         return format_error_message(str(e))
 
     finally:
-        # Stop typing indicator
+        # Stop typing indicator (Telegram only)
         cancel_event.set()
-        typing_task.cancel()
+        if typing_task:
+            typing_task.cancel()
 
 
 async def send_telegram_message(chat_id: int, text: str, parse_mode: str = "HTML"):
@@ -1260,6 +1283,294 @@ async def send_improvement_notification(proposal: dict) -> bool:
     keyboard = build_improvement_keyboard(proposal["id"])
 
     return await send_telegram_keyboard(admin_id, message, keyboard)
+
+
+# ==================== WhatsApp Handlers ====================
+
+async def handle_whatsapp_text(text: str, user: dict, phone: str) -> str:
+    """Handle WhatsApp text message.
+
+    Routes to existing command and message handlers, reusing Telegram logic.
+    """
+    import structlog
+    from commands.router import command_router
+    # Auto-register all commands
+    from commands import user as user_cmds, skills, admin, personalization, developer, reminders, pkm
+
+    logger = structlog.get_logger()
+
+    if not text:
+        return None
+
+    logger.info("whatsapp_text", phone=phone[:6] + "...", len=len(text))
+
+    # Handle commands using existing command router
+    if text.startswith("/"):
+        # command_router expects chat_id but we pass phone (string)
+        # Commands will work since phone is valid user ID
+        return await command_router.handle(text, user, phone)
+
+    # Regular message processing (reuse Telegram logic)
+    # process_message expects chat_id as int for Telegram, but accepts string for WhatsApp
+    return await process_message(text, user, phone)
+
+
+async def handle_whatsapp_image(image: dict, user: dict, phone: str) -> str:
+    """Handle WhatsApp image message with vision analysis."""
+    from src.services.evolution import download_media
+    from src.services.llm import get_llm_client
+    import base64
+    import structlog
+
+    logger = structlog.get_logger()
+    logger.info("whatsapp_image", phone=phone[:6] + "...")
+
+    try:
+        # Get image URL from payload
+        image_url = image.get("url")
+        caption = image.get("caption", "")
+
+        if not image_url:
+            return "Could not access image."
+
+        # Download image
+        image_bytes = await download_media(image_url)
+        if not image_bytes:
+            return "Failed to download image."
+
+        # Encode to base64 for vision
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+        # Determine mime type
+        mime_type = image.get("mimetype", "image/jpeg")
+
+        # Default prompt if no caption
+        prompt = caption if caption else "What's in this image? Describe it in detail."
+
+        # Call Claude with Vision
+        llm = get_llm_client()
+        response = llm.chat_with_image(
+            image_base64=image_b64,
+            prompt=prompt,
+            media_type=mime_type,
+            max_tokens=1024
+        )
+
+        return response
+
+    except Exception as e:
+        logger.error("whatsapp_image_error", error=str(e)[:100])
+        return "Sorry, I couldn't process the image."
+
+
+async def handle_whatsapp_audio(audio: dict, user: dict, phone: str) -> str:
+    """Handle WhatsApp voice message with transcription."""
+    from src.services.evolution import download_media
+    from src.services.media import transcribe_audio_groq
+    import structlog
+
+    logger = structlog.get_logger()
+    logger.info("whatsapp_audio", phone=phone[:6] + "...")
+
+    try:
+        audio_url = audio.get("url")
+        duration = audio.get("seconds", 0)
+        is_ptt = audio.get("ptt", False)
+
+        if not audio_url:
+            return "Could not access audio."
+
+        # Check duration limit
+        if duration > 60:
+            return "⚠️ Voice message too long. Maximum is 60 seconds."
+
+        # Download audio
+        audio_bytes = await download_media(audio_url)
+        if not audio_bytes:
+            return "Failed to download voice message."
+
+        # Transcribe with Groq Whisper
+        text = await transcribe_audio_groq(audio_bytes, duration)
+
+        if not text or text.strip() == "":
+            return "I couldn't understand the audio. Please try again."
+
+        # Send transcription preview
+        transcription_preview = text[:200] + "..." if len(text) > 200 else text
+        await send_evolution_message(phone, f"🎤 _Transcribed:_\n{transcription_preview}")
+
+        # Process through normal message handler
+        return await process_message(text, user, phone)
+
+    except Exception as e:
+        logger.error("whatsapp_audio_error", error=str(e)[:100])
+        return "Sorry, I couldn't process your voice message."
+
+
+async def handle_whatsapp_document(doc: dict, user: dict, phone: str) -> str:
+    """Handle WhatsApp document message."""
+    from src.services.evolution import download_media
+    from src.services.media import extract_pdf_text
+    import structlog
+
+    logger = structlog.get_logger()
+
+    filename = doc.get("fileName", "document")
+    mime_type = doc.get("mimetype", "")
+    doc_url = doc.get("url")
+    caption = doc.get("caption", "")
+
+    logger.info("whatsapp_document", filename=filename, mime=mime_type)
+
+    if not doc_url:
+        return "Could not access document."
+
+    try:
+        doc_bytes = await download_media(doc_url)
+        if not doc_bytes:
+            return "Failed to download document."
+
+        # Handle by mime type
+        if mime_type == "application/pdf" or filename.endswith(".pdf"):
+            # Extract text from PDF
+            text = await extract_pdf_text(doc_bytes)
+            if not text:
+                return "Could not extract text from PDF."
+
+            # Summarize or analyze
+            prompt = caption or f"Summarize this document ({filename}):"
+            combined = f"{prompt}\n\n{text[:10000]}"  # Limit context
+
+            return await process_message(combined, user, phone)
+
+        elif mime_type.startswith("text/") or filename.endswith((".txt", ".md", ".json")):
+            # Text file
+            try:
+                content = doc_bytes.decode("utf-8")[:5000]
+                prompt = caption or f"Analyze this file ({filename}):"
+                return await process_message(f"{prompt}\n\n{content}", user, phone)
+            except UnicodeDecodeError:
+                return "Could not read file as text."
+
+        else:
+            return f"Received document: {filename}\nDocument type ({mime_type}) not yet supported."
+
+    except Exception as e:
+        logger.error("whatsapp_document_error", error=str(e)[:100])
+        return "Sorry, I couldn't process the document."
+
+
+async def handle_whatsapp_callback(callback_id: str, user: dict, phone: str) -> str:
+    """Handle WhatsApp button/list selection callback.
+
+    Args:
+        callback_id: Button ID or row ID from interactive message response
+        user: User dict with platform info
+        phone: User's phone number
+
+    Returns:
+        Response message to send back to user
+    """
+    import structlog
+    logger = structlog.get_logger()
+
+    logger.info("whatsapp_callback", id=callback_id, phone=phone[:6] + "...")
+
+    if callback_id.startswith("skill_"):
+        # User selected a skill from menu
+        skill_name = callback_id[6:]  # Remove "skill_" prefix
+        from src.core.state import get_state_manager
+        state = get_state_manager()
+        await state.set_pending_skill(phone, skill_name)
+        return f"Selected skill: *{skill_name}*\n\nSend your task now."
+
+    return f"Unknown selection: {callback_id}"
+
+
+async def send_skill_menu_whatsapp(phone: str, skills: list) -> bool:
+    """Send skill selection menu via WhatsApp list message.
+
+    Args:
+        phone: Phone number to send menu to
+        skills: List of skill objects with name and description
+
+    Returns:
+        True if sent successfully
+    """
+    from src.services.evolution import send_list
+
+    sections = [{
+        "title": "Available Skills",
+        "rows": [
+            {
+                "rowId": f"skill_{s.name}",
+                "title": s.name[:24],
+                "description": (s.description or "")[:72]
+            }
+            for s in skills[:10]  # Max 10 per section
+        ]
+    }]
+
+    return await send_list(
+        phone=phone,
+        text="Select a skill to use:",
+        button_text="View Skills",
+        sections=sections,
+        title="Skills Menu"
+    )
+
+
+async def send_evolution_message(phone: str, text: str) -> bool:
+    """Send message via Evolution API.
+
+    Args:
+        phone: Phone number (e.g., "5511999999999" or "5511999999999@s.whatsapp.net")
+        text: Message text (max 4096 chars)
+
+    Returns:
+        True if sent successfully
+    """
+    import httpx
+    import structlog
+
+    logger = structlog.get_logger()
+
+    api_url = os.environ.get("EVOLUTION_API_URL", "")
+    api_key = os.environ.get("EVOLUTION_API_KEY", "")
+    instance = os.environ.get("EVOLUTION_INSTANCE", "main")
+
+    if not api_url or not api_key:
+        logger.error("evolution_credentials_missing")
+        return False
+
+    url = f"{api_url}/message/sendText/{instance}"
+    headers = {"apikey": api_key, "Content-Type": "application/json"}
+
+    # Format phone number (add @s.whatsapp.net if needed)
+    remote_jid = phone if "@" in phone else f"{phone}@s.whatsapp.net"
+
+    payload = {
+        "number": remote_jid,
+        "text": text[:4096]  # WhatsApp limit
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, json=payload)
+
+            if response.status_code == 200 or response.status_code == 201:
+                logger.info("evolution_sent", phone=phone[:6] + "...")
+                return True
+            else:
+                logger.warning("evolution_send_failed",
+                    status=response.status_code,
+                    body=response.text[:200]
+                )
+                return False
+
+    except Exception as e:
+        logger.error("evolution_send_error", error=str(e)[:100])
+        return False
 
 
 @app.cls(

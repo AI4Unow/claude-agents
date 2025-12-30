@@ -89,8 +89,10 @@ The II Framework agents are deployed and operational on Modal.com with full reli
 - [x] Rate limiting for macros (5s cooldown)
 - [x] Dangerous command blocking
 - [x] Smart FAQ system (hybrid keyword + semantic)
-- [x] 6 new commands (/profile, /context, /macro, /activity, /suggest, /forget)
-- [x] 53 skills total
+- [x] PKM Second Brain system (capture, inbox, tasks, search)
+- [x] Modular Firebase service architecture
+- [x] Command Router pattern refactor
+- [x] 54 skills total
 - [x] Gemini embeddings (gemini-embedding-001, 3072 dim)
 - [x] Batch embedding for FAQ seeding
 

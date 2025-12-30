@@ -176,6 +176,15 @@ Skill {
 │  Telegram API   │ telegram_api    │ 5 fails   │ 30s                         │
 │  Gemini API     │ gemini_api      │ 3 fails   │ 60s                         │
 │                                                                              │
+│  PKM System Architecture (src/services/pkm.py)                               │
+│  ┌─────────────────────────────────────────────────────────────┐             │
+│  │ Input (Telegram) ──► PKM Service ──► Classification (LLM)   │             │
+│  │                        │              │                     │             │
+│  │                        ▼              ▼                     │             │
+│  │                 Qdrant (Vector)   Firebase (Store)          │             │
+│  │                 (Semantic Search) (Persistence)             │             │
+│  └─────────────────────────────────────────────────────────────┘             │
+│                                                                              │
 │  States:                                                                     │
 │  ├── CLOSED: Normal operation, requests pass through                        │
 │  ├── OPEN: Service failing, reject immediately                              │

@@ -223,6 +223,7 @@ qdrant_circuit = CircuitBreaker("qdrant", threshold=5, cooldown=60)
 claude_circuit = CircuitBreaker("claude_api", threshold=5, cooldown=60)
 telegram_circuit = CircuitBreaker("telegram_api", threshold=5, cooldown=30)
 gemini_circuit = CircuitBreaker("gemini_api", threshold=3, cooldown=60)
+evolution_circuit = CircuitBreaker("evolution_api", threshold=3, cooldown=30)
 
 
 def get_circuit_stats() -> Dict[str, Dict]:
@@ -235,6 +236,7 @@ def get_circuit_stats() -> Dict[str, Dict]:
         "claude_api": claude_circuit.get_stats(),
         "telegram_api": telegram_circuit.get_stats(),
         "gemini_api": gemini_circuit.get_stats(),
+        "evolution_api": evolution_circuit.get_stats(),
     }
 
 
@@ -248,6 +250,7 @@ def get_circuit_status() -> Dict[str, str]:
         "claude": claude_circuit.state.value,
         "telegram": telegram_circuit.state.value,
         "gemini": gemini_circuit.state.value,
+        "evolution": evolution_circuit.state.value,
     }
 
 
@@ -260,6 +263,7 @@ def reset_all_circuits():
     claude_circuit.reset()
     telegram_circuit.reset()
     gemini_circuit.reset()
+    evolution_circuit.reset()
 
 
 def reset_circuit(name: str) -> bool:
@@ -279,6 +283,7 @@ def reset_circuit(name: str) -> bool:
         "claude_api": claude_circuit,
         "telegram_api": telegram_circuit,
         "gemini_api": gemini_circuit,
+        "evolution_api": evolution_circuit,
     }
 
     circuit = circuits.get(name)

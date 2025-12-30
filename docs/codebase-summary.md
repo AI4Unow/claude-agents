@@ -105,12 +105,32 @@ The main Modal app defining:
 | `telegram.py` | 400 | Telegram message utilities + formatters (markdown-to-HTML) |
 | `embeddings.py` | 187 | Gemini embeddings (gemini-embedding-001, 3072 dim, batch support) |
 | `media.py` | 127 | Media processing utilities |
+| `personalization.py` | 100 | Personalization loader with L1/L2 cache |
+| `pkm.py` | 294 | PKM logic, classification, semantic search |
 | `user_profile.py` | 200 | User profile CRUD + onboarding |
 | `user_context.py` | 150 | Work context management |
 | `user_macros.py` | 260 | Personal macros with NLU detection |
 | `activity.py` | 250 | Activity logging + pattern analysis |
+| `evolution.py` | - | Agent evolution and self-improvement |
 | `data_deletion.py` | 160 | GDPR-compliant data deletion |
-| `personalization.py` | 100 | Personalization loader with L1/L2 cache |
+| `token_refresh.py` | - | OAuth token management |
+
+### Firebase Modular Services (src/services/firebase/)
+
+| File | Purpose |
+|------|---------|
+| `_client.py` | Thread-safe Firebase init (lru_cache) |
+| `_circuit.py` | @with_firebase_circuit decorator |
+| `users.py` | User CRUD |
+| `tasks.py` | Task queue |
+| `tiers.py` | User tier system |
+| `faq.py` | FAQ management |
+| `reports.py` | Firebase Storage reports |
+| `reminders.py` | Reminder scheduling |
+| `local_tasks.py` | Local skill task queue |
+| `pkm.py` | PKM data persistence |
+| `ii_framework.py` | Temporal entities, decisions |
+| `tokens.py` | OAuth tokens |
 
 ### Tools (src/tools/)
 
