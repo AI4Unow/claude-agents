@@ -657,13 +657,28 @@ async def handle_command(command: str, user: dict, chat_id: int) -> str:
 
 I'm <b>AI4U.now Bot</b> — your unified AI assistant powered by multiple AI models (Gemini, Claude, GPT) through a single interface.
 
-<b>What I can do:</b>
-• Answer questions using the best AI models
-• Execute 50+ specialized skills
-• Research, analyze, and create content
-• Process images, documents, and more
+<b>🤖 AI Models:</b>
+• Gemini 2.5/3.0 (fast, multimodal)
+• Claude Opus/Sonnet (reasoning, coding)
+• GPT-5 series (general, creative)
 
-Use /skills to browse available skills or /help for commands."""
+<b>🛠️ 50+ Skills:</b>
+• <b>Research:</b> Deep research, web grounding, fact-checking
+• <b>Development:</b> Backend, frontend, mobile, databases
+• <b>Design:</b> UI/UX, canvas design, image generation
+• <b>Documents:</b> PDF, Word, Excel, PowerPoint processing
+• <b>Media:</b> Video download, image enhance, processing
+• <b>Automation:</b> Social media, payments, DevOps
+
+<b>⚡ Quick Actions:</b>
+/translate, /summarize, /rewrite
+
+<b>📍 Commands:</b>
+/skills - Browse all skills
+/help - Full command list
+/status - Check your status
+
+Just send a message to chat, or use /skills to explore!"""
 
     elif cmd == "/help":
         # Get user tier for context-aware help
