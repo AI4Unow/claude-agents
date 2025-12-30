@@ -162,20 +162,43 @@ async def seed_faq_entries():
     sys.path.insert(0, "/root")
 
     from src.services.firebase import create_faq_entry, FAQEntry
-    from src.services.qdrant import get_text_embedding, upsert_faq_embedding, ensure_faq_collection
+    from src.services.qdrant import get_text_embedding, upsert_faq_embedding, get_client, FAQ_COLLECTION, VECTOR_DIM
     import structlog
 
     logger = structlog.get_logger()
     logger.info("seed_faq_start", count=len(FAQ_ENTRIES))
 
-    # Ensure Qdrant collection exists
-    ensure_faq_collection()
+    # Recreate Qdrant collection with correct dimensions
+    client = get_client()
+    if client:
+        from qdrant_client.http import models
+        try:
+            # Delete old collection if exists
+            client.delete_collection(FAQ_COLLECTION)
+            logger.info("faq_collection_deleted")
+        except Exception:
+            pass
 
+        # Create new collection with correct dimensions
+        client.create_collection(
+            collection_name=FAQ_COLLECTION,
+            vectors_config=models.VectorParams(
+                size=VECTOR_DIM,
+                distance=models.Distance.COSINE
+            )
+        )
+        logger.info("faq_collection_created", dim=VECTOR_DIM)
+
+    import asyncio
     created = 0
     failed = 0
 
-    for data in FAQ_ENTRIES:
+    for i, data in enumerate(FAQ_ENTRIES):
         try:
+            # Rate limit: delay between requests
+            if i > 0:
+                await asyncio.sleep(1.5)  # 1.5s delay between embeddings
+
             # Generate embedding for answer
             embedding = await get_text_embedding(data["answer"])
 

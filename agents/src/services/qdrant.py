@@ -19,7 +19,7 @@ logger = get_logger()
 _client = None
 _enabled = False
 
-VECTOR_DIM = 1024  # Z.AI embedding-3 default dimension
+VECTOR_DIM = 3072  # Gemini gemini-embedding-001 dimension
 
 # Collection names
 COLLECTIONS = {
@@ -841,11 +841,21 @@ async def delete_faq_embedding(faq_id: str) -> bool:
         return False
 
 
-async def get_text_embedding(text: str) -> Optional[List[float]]:
-    """Get embedding for text using existing embedding service."""
+async def get_text_embedding(text: str, for_query: bool = False) -> Optional[List[float]]:
+    """Get embedding for text using Gemini embedding service.
+
+    Args:
+        text: Text to embed
+        for_query: If True, uses RETRIEVAL_QUERY task type (for searches).
+                   If False, uses RETRIEVAL_DOCUMENT task type (for storage).
+    """
     try:
-        from src.services.embeddings import get_embedding
-        return get_embedding(text)
+        if for_query:
+            from src.services.embeddings import get_query_embedding
+            return get_query_embedding(text)
+        else:
+            from src.services.embeddings import get_embedding
+            return get_embedding(text)
     except Exception as e:
         logger.error("get_text_embedding_error", error=str(e)[:50])
         return None

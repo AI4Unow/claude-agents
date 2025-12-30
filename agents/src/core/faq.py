@@ -68,8 +68,8 @@ class FAQMatcher:
         try:
             from src.services.qdrant import search_faq_embedding, get_text_embedding
 
-            # Generate embedding for query
-            embedding = await get_text_embedding(message)
+            # Generate embedding for query (use query task type)
+            embedding = await get_text_embedding(message, for_query=True)
             if not embedding:
                 return None
 
