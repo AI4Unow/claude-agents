@@ -18,6 +18,8 @@ image = (
     .pip_install_from_requirements("requirements.txt")
     .env({"PYTHONPATH": "/root"})
     .add_local_dir("src", remote_path="/root/src")
+    .add_local_dir("api", remote_path="/root/api")  # FastAPI routes
+    .add_local_dir("commands", remote_path="/root/commands")  # Command handlers
     .add_local_dir("skills", remote_path="/root/skills_source")  # For deploy-time sync
 )
 
@@ -91,17 +93,19 @@ async def notify_task_queued(user_id: int, skill_name: str, task_id: str):
 
 # ==================== FastAPI App Setup ====================
 
-# Import web_app and include all routers
-from api.app import web_app
-from api.routes import health, telegram, whatsapp, skills, reports, admin
+def create_web_app():
+    """Create FastAPI app with all routers. Lazy import to avoid module-level import errors."""
+    from api.app import web_app
+    from api.routes import health, telegram, whatsapp, skills, reports, admin
 
-# Include all route modules
-web_app.include_router(health.router)
-web_app.include_router(telegram.router)
-web_app.include_router(whatsapp.router)
-web_app.include_router(skills.router)
-web_app.include_router(reports.router)
-web_app.include_router(admin.router)
+    # Include all route modules
+    web_app.include_router(health.router)
+    web_app.include_router(telegram.router)
+    web_app.include_router(whatsapp.router)
+    web_app.include_router(skills.router)
+    web_app.include_router(reports.router)
+    web_app.include_router(admin.router)
+    return web_app
 
 
 # ==================== Skill Execution Functions ====================
@@ -1600,7 +1604,7 @@ class TelegramChatAgent:
 
     @modal.asgi_app()
     def app(self):
-        return web_app
+        return create_web_app()
 
 
 @app.function(
