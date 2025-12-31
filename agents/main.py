@@ -537,40 +537,48 @@ async def _run_chat_fast(
     from src.services.llm import get_llm_client
     from src.core.state import get_state_manager
     import structlog
+    import asyncio
 
     logger = structlog.get_logger()
     logger.info("chat_fast_path", user_id=user_id, text_len=len(text))
 
-    llm = get_llm_client()
-    state = get_state_manager()
+    try:
+        llm = get_llm_client()
+        state = get_state_manager()
 
-    # Get recent conversation for context (last 6 messages)
-    messages = []
-    if user_id:
-        full_history = await state.get_conversation(user_id)
-        messages = full_history[-6:] if len(full_history) > 6 else full_history
+        # Get recent conversation for context (last 6 messages)
+        messages = []
+        if user_id:
+            full_history = await state.get_conversation(user_id)
+            messages = full_history[-6:] if len(full_history) > 6 else full_history
 
-    messages.append({"role": "user", "content": text})
+        messages.append({"role": "user", "content": text})
 
-    system = """Your name is AI4U.now Bot. You are friendly and helpful.
+        system = """Your name is AI4U.now Bot. You are friendly and helpful.
 Keep responses brief for casual chat. Be natural and conversational."""
 
-    # llm.chat() is sync - run in thread to avoid blocking event loop
-    import asyncio
-    result = await asyncio.to_thread(
-        llm.chat,
-        messages=messages,
-        system=system,
-        model="kiro-claude-opus-4-5-agentic",
-        max_tokens=512,
-    )
+        # llm.chat() is sync - run in thread to avoid blocking event loop
+        result = await asyncio.to_thread(
+            llm.chat,
+            messages=messages,
+            system=system,
+            model="kiro-claude-opus-4-5-agentic",
+            max_tokens=512,
+        )
 
-    # Save to conversation history
-    if user_id and result:
-        messages.append({"role": "assistant", "content": result})
-        await state.save_conversation(user_id, messages[-10:])  # Keep last 10
+        logger.info("chat_fast_path_result", result_len=len(result) if result else 0)
 
-    return result or "👋"
+        # Save to conversation history
+        if user_id and result:
+            messages.append({"role": "assistant", "content": result})
+            await state.save_conversation(user_id, messages[-10:])  # Keep last 10
+
+        return result or "👋 Hello!"
+
+    except Exception as e:
+        logger.error("chat_fast_path_error", error=str(e)[:100])
+        # Return friendly fallback instead of raising
+        return f"👋 Hi there! (Note: {str(e)[:50]})"
 
 
 async def _run_simple(
