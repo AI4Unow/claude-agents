@@ -386,6 +386,39 @@ class StateManager:
             {"messages": [], "cleared_at": datetime.now(timezone.utc).isoformat()}
         )
 
+    # ==================== Wizard State Methods ====================
+
+    COLLECTION_WIZARD = "wizard_state"
+    TTL_WIZARD = 300  # 5 minutes
+
+    async def get_wizard_state(self, user_id: int) -> Optional[Dict]:
+        """Get current wizard state for user."""
+        if not user_id:
+            return None
+        return await self.get(self.COLLECTION_WIZARD, str(user_id), ttl_seconds=self.TTL_WIZARD)
+
+    async def set_wizard_state(self, user_id: int, wizard_type: str, step: str, data: Dict = None):
+        """Set wizard state for multi-step flows."""
+        if not user_id:
+            return
+        await self.set(
+            self.COLLECTION_WIZARD,
+            str(user_id),
+            {
+                "wizard": wizard_type,
+                "step": step,
+                "data": data or {},
+                "updated_at": time.time()
+            },
+            ttl_seconds=self.TTL_WIZARD
+        )
+
+    async def clear_wizard_state(self, user_id: int):
+        """Clear wizard state."""
+        if not user_id:
+            return
+        await self.invalidate(self.COLLECTION_WIZARD, str(user_id))
+
     # ==================== User Tier Methods ====================
 
     async def get_user_tier_cached(self, user_id: int) -> str:

@@ -174,3 +174,41 @@ async def cancel_command(args: str, user: dict, chat_id: int) -> str:
     state = get_state_manager()
     await state.clear_pending_skill(user.get("id"))
     return "✓ Operation cancelled."
+
+
+@command_router.command(
+    name="/export",
+    description="Export your data (conversations, stats)",
+    permission="user",
+    category="general"
+)
+async def export_command(args: str, user: dict, chat_id: int) -> str:
+    """Start export wizard."""
+    import sys
+
+    main = sys.modules.get("main")
+    if not main:
+        return "Export unavailable."
+
+    keyboard = [
+        [
+            {"text": "💬 Conversations", "callback_data": "export:type:conversations"},
+            {"text": "📊 Usage Stats", "callback_data": "export:type:stats"}
+        ],
+        [
+            {"text": "❌ Cancel", "callback_data": "export:cancel"}
+        ]
+    ]
+
+    await main.send_telegram_keyboard(
+        chat_id,
+        "<b>📤 Export Data</b>\n\nWhat would you like to export?",
+        keyboard
+    )
+
+    # Set wizard state
+    from src.core.state import get_state_manager
+    state = get_state_manager()
+    await state.set_wizard_state(user.get("id"), "export", "select_type")
+
+    return None  # Message sent via keyboard

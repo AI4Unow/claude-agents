@@ -1047,6 +1047,61 @@ async def delete_telegram_message(chat_id: int, message_id: int) -> bool:
         return False
 
 
+async def send_telegram_document(
+    chat_id: int,
+    file_bytes: bytes,
+    filename: str,
+    caption: str = None
+) -> bool:
+    """Send document file via Telegram API.
+
+    Args:
+        chat_id: Telegram chat ID
+        file_bytes: File content as bytes
+        filename: Filename with extension (e.g., "export.csv")
+        caption: Optional caption for the file
+
+    Returns:
+        True if sent successfully
+    """
+    import httpx
+    import structlog
+
+    logger = structlog.get_logger()
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+    if not token:
+        logger.error("telegram_no_token")
+        return False
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # Use multipart form for file upload
+            files = {"document": (filename, file_bytes)}
+            data = {"chat_id": chat_id}
+            if caption:
+                data["caption"] = caption[:1024]  # Telegram limit
+                data["parse_mode"] = "HTML"
+
+            response = await client.post(
+                f"https://api.telegram.org/bot{token}/sendDocument",
+                files=files,
+                data=data
+            )
+            result = response.json()
+
+            if not result.get("ok"):
+                logger.error("telegram_document_failed", error=result.get("description"))
+                return False
+
+            logger.info("telegram_document_sent", filename=filename, chat_id=chat_id)
+            return True
+
+    except Exception as e:
+        logger.error("telegram_document_error", error=str(e)[:100])
+        return False
+
+
 async def send_skills_menu(chat_id: int):
     """Send skills menu with inline keyboard categories."""
     keyboard = build_skills_keyboard()
@@ -1163,6 +1218,10 @@ async def handle_callback(callback: dict) -> dict:
     elif action == "qr":
         # Quick reply button pressed
         await handle_quick_reply_callback(chat_id, value, user)
+
+    elif action == "export":
+        # Export wizard callbacks
+        await handle_export_callback(value, user, chat_id, message_id)
 
     return {"ok": True}
 
@@ -1333,6 +1392,192 @@ async def handle_quick_reply_callback(chat_id: int, value: str, user: dict):
     response = await process_message(prompt, user, chat_id)
     if response:
         await send_telegram_message(chat_id, response)
+
+
+async def handle_export_callback(
+    value: str,
+    user: dict,
+    chat_id: int,
+    message_id: int
+):
+    """Handle export wizard callbacks."""
+    import structlog
+    from src.core.state import get_state_manager
+
+    logger = structlog.get_logger()
+    user_id = user.get("id")
+    state = get_state_manager()
+
+    # Parse value: "type:conversations" or "format:csv" or "cancel"
+    parts = value.split(":", 1)
+    action = parts[0] if parts else ""
+    param = parts[1] if len(parts) > 1 else ""
+
+    if action == "cancel":
+        await state.clear_wizard_state(user_id)
+        await edit_progress_message(chat_id, message_id, "Export cancelled.")
+        return
+
+    if action == "type":
+        # User selected export type
+        await state.set_wizard_state(user_id, "export", "select_format", {"type": param})
+
+        keyboard = [
+            [
+                {"text": "📄 CSV", "callback_data": "export:format:csv"},
+                {"text": "📋 JSON", "callback_data": "export:format:json"}
+            ],
+            [
+                {"text": "❌ Cancel", "callback_data": "export:cancel"}
+            ]
+        ]
+
+        await send_telegram_keyboard(
+            chat_id,
+            f"<b>📤 Export {param.title()}</b>\n\nSelect format:",
+            keyboard
+        )
+        # Delete old message
+        await delete_telegram_message(chat_id, message_id)
+        return
+
+    if action == "format":
+        # User selected format, execute export
+        wizard_state = await state.get_wizard_state(user_id)
+        if not wizard_state:
+            await send_telegram_message(chat_id, "Export session expired. Use /export again.")
+            return
+
+        export_type = wizard_state.get("data", {}).get("type", "conversations")
+        export_format = param  # csv or json
+
+        await edit_progress_message(chat_id, message_id, "⏳ <i>Generating export...</i>")
+
+        # Execute export
+        success = await execute_export(user_id, chat_id, export_type, export_format)
+
+        await state.clear_wizard_state(user_id)
+
+        if success:
+            await delete_telegram_message(chat_id, message_id)
+        else:
+            await edit_progress_message(chat_id, message_id, "❌ Export failed. Try again later.")
+
+
+async def execute_export(
+    user_id: int,
+    chat_id: int,
+    export_type: str,
+    export_format: str
+) -> bool:
+    """Execute data export and send file."""
+    import json
+    from datetime import datetime
+
+    try:
+        if export_type == "conversations":
+            data = await export_conversations(user_id)
+        elif export_type == "stats":
+            data = await export_activity_stats(user_id)
+        else:
+            return False
+
+        if not data:
+            await send_telegram_message(chat_id, "No data to export.")
+            return True
+
+        # Generate file
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+
+        if export_format == "json":
+            file_bytes = json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8")
+            filename = f"{export_type}_{timestamp}.json"
+        else:  # csv
+            file_bytes = convert_to_csv(data, export_type)
+            filename = f"{export_type}_{timestamp}.csv"
+
+        # Send file
+        item_count = len(data) if isinstance(data, list) else 1
+        return await send_telegram_document(
+            chat_id,
+            file_bytes,
+            filename,
+            caption=f"📤 <b>{export_type.title()}</b> export\n{item_count} items"
+        )
+
+    except Exception as e:
+        import structlog
+        structlog.get_logger().error("export_error", error=str(e)[:100])
+        return False
+
+
+async def export_conversations(user_id: int) -> list:
+    """Export user's conversation history."""
+    from src.core.state import get_state_manager
+
+    state = get_state_manager()
+    messages = await state.get_conversation(user_id)
+
+    # Add metadata
+    return [{
+        "role": msg.get("role"),
+        "content": msg.get("content"),
+    } for msg in messages]
+
+
+async def export_activity_stats(user_id: int) -> dict:
+    """Export user's activity statistics."""
+    from src.services.activity import get_activity_stats, get_recent_activities
+
+    stats = await get_activity_stats(user_id)
+    recent = await get_recent_activities(user_id, limit=100)
+
+    return {
+        "summary": stats,
+        "recent_activities": [
+            {
+                "action_type": a.get("action_type"),
+                "skill": a.get("skill"),
+                "summary": a.get("summary"),
+                "timestamp": a.get("timestamp")
+            }
+            for a in recent
+        ]
+    }
+
+
+def convert_to_csv(data, export_type: str) -> bytes:
+    """Convert data to CSV format."""
+    import csv
+    import io
+
+    if not data:
+        return b""
+
+    output = io.StringIO()
+
+    if export_type == "conversations":
+        writer = csv.DictWriter(output, fieldnames=["role", "content"])
+        writer.writeheader()
+        writer.writerows(data)
+    elif export_type == "stats":
+        # Stats is a dict, convert to rows
+        writer = csv.writer(output)
+        writer.writerow(["metric", "value"])
+        flat_data = data.get("summary", {}) if isinstance(data, dict) else {}
+        for key, value in flat_data.items():
+            if isinstance(value, (list, dict)):
+                value = str(value)
+            writer.writerow([key, value])
+    else:
+        # Generic: use first item's keys as headers
+        if isinstance(data, list) and data:
+            keys = list(data[0].keys())
+            writer = csv.DictWriter(output, fieldnames=keys)
+            writer.writeheader()
+            writer.writerows(data)
+
+    return output.getvalue().encode("utf-8")
 
 
 async def handle_improvement_approve(chat_id: int, proposal_id: str, user: dict):
