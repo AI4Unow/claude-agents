@@ -500,6 +500,9 @@ ERROR_SUGGESTIONS = {
     "max_iterations": "Request was too complex. Try breaking it down.",
 }
 
+# Module-level throttle timestamps (keyed by chat_id) for progress updates
+_throttle_timestamps: dict[int, float] = {}
+
 
 def format_error_message(error: str) -> str:
     """Format error with helpful suggestion."""
@@ -671,20 +674,18 @@ async def _run_orchestrated(
     import time
 
     logger = structlog.get_logger()
-
-    # Track progress updates to avoid Telegram rate limiting
-    last_update_time = [0.0]  # Use list for mutable closure
     min_update_interval = 1.0  # 1 second between updates
 
     async def progress_callback(status: str):
         """Throttled progress callback for Telegram."""
         current_time = time.time()
 
-        # Throttle updates to avoid rate limits
-        if current_time - last_update_time[0] < min_update_interval:
+        # Throttle updates using module-level dict to avoid rate limits
+        last_time = _throttle_timestamps.get(chat_id, 0.0)
+        if current_time - last_time < min_update_interval:
             return
 
-        last_update_time[0] = current_time
+        _throttle_timestamps[chat_id] = current_time
 
         try:
             await edit_progress_message(chat_id, progress_msg_id, status)
@@ -879,10 +880,10 @@ async def process_message(
 
         # Update/delete progress message (Telegram only)
         if is_telegram:
-            if used_fast_path:
+            if used_fast_path and progress_msg_id > 0:
                 # Delete progress message for fast path (no need to show "Complete")
                 await delete_telegram_message(chat_id, progress_msg_id)
-            else:
+            elif not used_fast_path:
                 await edit_progress_message(chat_id, progress_msg_id, "✅ <i>Complete</i>")
 
         # Log activity (fire-and-forget, non-blocking)
@@ -932,8 +933,9 @@ async def process_message(
         # Update progress with error (Telegram only)
         if is_telegram:
             await edit_progress_message(chat_id, progress_msg_id, f"❌ <i>Error: {str(e)[:100]}</i>")
+            return None  # Progress message already shows error, avoid duplicate
 
-        return format_error_message(str(e))
+        return format_error_message(str(e))  # Non-Telegram only
 
     finally:
         # Stop typing indicator (Telegram only)
@@ -1451,20 +1453,22 @@ async def handle_export_callback(
             await send_telegram_message(chat_id, "Export session expired. Use /export again.")
             return
 
-        export_type = wizard_state.get("data", {}).get("type", "conversations")
-        export_format = param  # csv or json
+        try:
+            export_type = wizard_state.get("data", {}).get("type", "conversations")
+            export_format = param  # csv or json
 
-        await edit_progress_message(chat_id, message_id, "⏳ <i>Generating export...</i>")
+            await edit_progress_message(chat_id, message_id, "⏳ <i>Generating export...</i>")
 
-        # Execute export
-        success = await execute_export(user_id, chat_id, export_type, export_format)
+            # Execute export
+            success = await execute_export(user_id, chat_id, export_type, export_format)
 
-        await state.clear_wizard_state(user_id)
-
-        if success:
-            await delete_telegram_message(chat_id, message_id)
-        else:
-            await edit_progress_message(chat_id, message_id, "❌ Export failed. Try again later.")
+            if success:
+                await delete_telegram_message(chat_id, message_id)
+            else:
+                await edit_progress_message(chat_id, message_id, "❌ Export failed. Try again later.")
+        finally:
+            # Always clear wizard state to prevent user getting stuck
+            await state.clear_wizard_state(user_id)
 
 
 async def execute_export(
