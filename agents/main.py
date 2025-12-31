@@ -555,8 +555,10 @@ async def _run_chat_fast(
     system = """Your name is AI4U.now Bot. You are friendly and helpful.
 Keep responses brief for casual chat. Be natural and conversational."""
 
-    # llm.chat() returns text string when no tools provided
-    result = llm.chat(
+    # llm.chat() is sync - run in thread to avoid blocking event loop
+    import asyncio
+    result = await asyncio.to_thread(
+        llm.chat,
         messages=messages,
         system=system,
         model="kiro-claude-opus-4-5-agentic",
@@ -1699,6 +1701,19 @@ class TelegramChatAgent:
                 logger.info("llm_warm_success", model=llm.model)
             except Exception as llm_err:
                 logger.warning("llm_warm_failed", error=str(llm_err)[:100])
+
+            # Pre-warm Telegram API connection (httpx + TLS handshake)
+            # This prevents delayed first response after container cold start
+            try:
+                import httpx
+                token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+                if token:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        # Use getMe which is lightweight and doesn't send messages
+                        await client.get(f"https://api.telegram.org/bot{token}/getMe")
+                    logger.info("telegram_warm_success")
+            except Exception as tg_err:
+                logger.warning("telegram_warm_failed", error=str(tg_err)[:100])
 
             logger.info("cache_warming_done")
         except Exception as e:
