@@ -8,11 +8,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 import sys
 sys.path.insert(0, 'agents')
 
-
-class MockCircuitState:
-    OPEN = "OPEN"
-    CLOSED = "CLOSED"
-    HALF_OPEN = "HALF_OPEN"
+from src.core.resilience import CircuitState
 
 
 class TestWithFirebaseCircuit:
@@ -24,7 +20,7 @@ class TestWithFirebaseCircuit:
         from src.services.firebase._circuit import with_firebase_circuit
 
         mock_circuit = MagicMock()
-        mock_circuit.state = "CLOSED"
+        mock_circuit.state = CircuitState.CLOSED
         mock_circuit._record_success = MagicMock()
 
         @with_firebase_circuit(open_return=None)
@@ -43,7 +39,7 @@ class TestWithFirebaseCircuit:
         from src.services.firebase._circuit import with_firebase_circuit
 
         mock_circuit = MagicMock()
-        mock_circuit.state = "OPEN"
+        mock_circuit.state = CircuitState.OPEN
 
         @with_firebase_circuit(open_return=[])
         async def test_func():
@@ -60,7 +56,7 @@ class TestWithFirebaseCircuit:
         from src.services.firebase._circuit import with_firebase_circuit
 
         mock_circuit = MagicMock()
-        mock_circuit.state = "OPEN"
+        mock_circuit.state = CircuitState.OPEN
 
         @with_firebase_circuit(open_return=None)
         async def get_user():
@@ -77,7 +73,7 @@ class TestWithFirebaseCircuit:
         from src.services.firebase._circuit import with_firebase_circuit
 
         mock_circuit = MagicMock()
-        mock_circuit.state = "OPEN"
+        mock_circuit.state = CircuitState.OPEN
 
         @with_firebase_circuit(open_return=False)
         async def check_exists():
@@ -95,7 +91,7 @@ class TestWithFirebaseCircuit:
         from src.core.resilience import CircuitOpenError
 
         mock_circuit = MagicMock()
-        mock_circuit.state = "OPEN"
+        mock_circuit.state = CircuitState.OPEN
         mock_circuit._cooldown_remaining = MagicMock(return_value=30)
 
         @with_firebase_circuit(raise_on_open=True)
@@ -112,7 +108,7 @@ class TestWithFirebaseCircuit:
         from src.services.firebase._circuit import with_firebase_circuit
 
         mock_circuit = MagicMock()
-        mock_circuit.state = "CLOSED"
+        mock_circuit.state = CircuitState.CLOSED
         mock_circuit._record_failure = MagicMock()
 
         @with_firebase_circuit(open_return=None)
@@ -131,7 +127,7 @@ class TestWithFirebaseCircuit:
         from src.services.firebase._circuit import with_firebase_circuit
 
         mock_circuit = MagicMock()
-        mock_circuit.state = "OPEN"
+        mock_circuit.state = CircuitState.OPEN
 
         mock_logger = MagicMock()
 
@@ -153,7 +149,7 @@ class TestWithFirebaseCircuit:
         from src.services.firebase._circuit import with_firebase_circuit
 
         mock_circuit = MagicMock()
-        mock_circuit.state = "OPEN"
+        mock_circuit.state = CircuitState.OPEN
 
         mock_logger = MagicMock()
 
@@ -175,7 +171,7 @@ class TestWithFirebaseCircuit:
         from src.services.firebase._circuit import with_firebase_circuit
 
         mock_circuit = MagicMock()
-        mock_circuit.state = "HALF_OPEN"
+        mock_circuit.state = CircuitState.HALF_OPEN
         mock_circuit._record_success = MagicMock()
 
         @with_firebase_circuit(open_return=None)
