@@ -491,8 +491,11 @@ async def typing_indicator(chat_id: int, cancel_event):
 
 ERROR_SUGGESTIONS = {
     "timeout": "Try again or simplify your request.",
-    "circuit_open": "Service temporarily unavailable. Try in 30 seconds.",
+    "circuit": "Service busy. Please wait 30 seconds and try again.",
+    "is open": "Service overloaded. Please wait 30 seconds and try again.",
     "rate_limit": "Too many requests. Please wait a moment.",
+    "rate limit": "Too many requests. Please wait a moment.",
+    "429": "Too many requests. Please wait a moment.",
     "connection": "Network issue. Please try again.",
     "max_iterations": "Request was too complex. Try breaking it down.",
 }

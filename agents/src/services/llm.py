@@ -40,7 +40,7 @@ class LLMClient:
         max_tokens: int = 2048,
         temperature: float = 0.7,
         tools: Optional[List[dict]] = None,
-        timeout: float = 60.0,
+        timeout: float = 120.0,  # Increased from 60s for complex queries
         model: Optional[str] = None,
     ):
         """Send chat completion request.
@@ -90,9 +90,27 @@ class LLMClient:
             return response.content[0].text
 
         except Exception as e:
-            claude_circuit._record_failure(e)
-            logger.error("llm_error", error=str(e)[:100])
-            raise
+            error_str = str(e).lower()
+            # Handle rate limiting (429) - don't count as circuit failure, retry after delay
+            if "rate" in error_str or "429" in error_str or "too many" in error_str:
+                logger.warning("llm_rate_limited", error=str(e)[:100])
+                import time
+                time.sleep(2)  # Brief backoff before retry
+                try:
+                    response = self.client.messages.create(**kwargs)
+                    claude_circuit._record_success()
+                    logger.info("llm_retry_success", model=effective_model)
+                    if tools:
+                        return response
+                    return response.content[0].text
+                except Exception as retry_error:
+                    claude_circuit._record_failure(retry_error)
+                    logger.error("llm_retry_failed", error=str(retry_error)[:100])
+                    raise
+            else:
+                claude_circuit._record_failure(e)
+                logger.error("llm_error", error=str(e)[:100])
+                raise
 
     def chat_with_image(
         self,
