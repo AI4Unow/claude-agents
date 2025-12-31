@@ -768,6 +768,9 @@ async def process_message(
     # Check for pending skill (user selected from /skills menu)
     pending_skill = await state.get_pending_skill(user.get("id"))
 
+    # Track if we used fast path (for progress message handling)
+    used_fast_path = False
+
     try:
         if pending_skill:
             # Execute pending skill with this message as task
@@ -842,6 +845,7 @@ async def process_message(
                     if is_simple_chat(text):
                         # Fast path: direct LLM without tools (~0.5-1s)
                         response = await _run_chat_fast(text, user, user_id)
+                        used_fast_path = True
                     else:
                         # Complex chat: use full agentic loop with tools
                         response = await _run_simple(
@@ -858,6 +862,7 @@ async def process_message(
             if is_simple_chat(text):
                 # Fast path: direct LLM without tools (~0.5-1s)
                 response = await _run_chat_fast(text, user, user_id)
+                used_fast_path = True
             else:
                 # Complex chat: use full agentic loop with tools
                 response = await _run_simple(
@@ -869,9 +874,13 @@ async def process_message(
         if is_telegram and message_id:
             await set_message_reaction(chat_id, message_id, "✅")
 
-        # Update progress with completion (Telegram only)
+        # Update/delete progress message (Telegram only)
         if is_telegram:
-            await edit_progress_message(chat_id, progress_msg_id, "✅ <i>Complete</i>")
+            if used_fast_path:
+                # Delete progress message for fast path (no need to show "Complete")
+                await delete_telegram_message(chat_id, progress_msg_id)
+            else:
+                await edit_progress_message(chat_id, progress_msg_id, "✅ <i>Complete</i>")
 
         # Log activity (fire-and-forget, non-blocking)
         try:
@@ -1008,6 +1017,33 @@ async def send_telegram_keyboard(chat_id: int, text: str, keyboard: list):
             return True
     except Exception as e:
         logger.error("telegram_keyboard_error", error=str(e))
+        return False
+
+
+async def delete_telegram_message(chat_id: int, message_id: int) -> bool:
+    """Delete a Telegram message (used to clean up progress messages)."""
+    import httpx
+    import structlog
+
+    logger = structlog.get_logger()
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+    if not token or not message_id:
+        return False
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"https://api.telegram.org/bot{token}/deleteMessage",
+                json={"chat_id": chat_id, "message_id": message_id}
+            )
+            result = response.json()
+            if not result.get("ok"):
+                # Silently fail - message may have already been deleted
+                logger.debug("telegram_delete_failed", error=result.get("description"))
+            return result.get("ok", False)
+    except Exception as e:
+        logger.debug("telegram_delete_error", error=str(e)[:50])
         return False
 
 
