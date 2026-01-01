@@ -85,7 +85,9 @@ class LLMClient:
         # Use `or` to handle empty strings from env vars
         self.api_key = os.environ.get("ANTHROPIC_API_KEY", "") or ""
         self.base_url = os.environ.get("ANTHROPIC_BASE_URL", "") or "https://api.ai4u.now"
-        self.model = os.environ.get("ANTHROPIC_MODEL", "") or "kiro-claude-opus-4-5-agentic"
+        # Import from centralized config
+        from src.config import DEFAULT_MODEL
+        self.model = os.environ.get("ANTHROPIC_MODEL", "") or DEFAULT_MODEL
         self._client = None
 
         # Log initialization for cold start debugging

@@ -4,15 +4,15 @@
 
 **Phase:** Production MVP
 **Deploy URL:** https://duc-a-nguyen--claude-agents-telegramchatagent-app.modal.run
-**Last Updated:** Dec 30, 2025
+**Last Updated:** Jan 1, 2026
 
 **Statistics:**
-- **53 skills** in agents/skills/ directory (8 local, 43 remote, 2 hybrid)
+- **61 skills** in agents/skills/ directory (8 local, 40+ remote, 13 hybrid)
 - **70+ Python files** in agents/src/
 - **37 test files** (unit + stress tests with Locust framework)
 - **~2,000 lines** in main.py
-- **7 circuit breakers** (exa, tavily, firebase, qdrant, claude, telegram, gemini)
-- **15 API endpoints** (health, webhooks, skill execution, reports, traces, circuits)
+- **8 circuit breakers** (exa, tavily, firebase, qdrant, claude, telegram, gemini, evolution)
+- **18 API endpoints** (health, webhooks, skill execution, reports, traces, circuits)
 - **4 agents** (Telegram, GitHub, Data, Content)
 
 **Key Features:**
@@ -176,18 +176,23 @@ The main Modal app defining:
 | File | Lines | Purpose |
 |------|-------|---------|
 | `state.py` | 500+ | StateManager with L1 TTL cache + L2 Firebase, user tiers |
-| `resilience.py` | 350 | Circuit breakers (7 services) + retry decorator |
+| `resilience.py` | 350 | Circuit breakers (8 services) + retry decorator |
 | `trace.py` | 200 | Execution tracing with TraceContext, ToolTrace |
+| `intent.py` | 150 | Intent classification (CHAT, SKILL, ORCHESTRATE) |
+| `router.py` | 160 | Semantic skill routing via Qdrant |
 | `improvement.py` | 500 | Self-improvement service with Telegram approval |
 | `orchestrator.py` | 500 | Multi-skill task orchestration with progress |
+| `faq.py` | 129 | Smart FAQ with hybrid keyword + semantic matching |
+| `status_messages.py` | 100 | Real-time progress updates |
+| `quick_replies.py` | 100 | Contextual inline buttons |
 | `complexity.py` | 130 | Task complexity classification |
 | `evaluator.py` | 287 | Quality evaluation and optimization |
 | `context_optimization.py` | 283 | Context compaction and optimization |
 | `chain.py` | 243 | Sequential skill pipeline execution |
-| `router.py` | 160 | Semantic skill routing via Qdrant |
-| `faq.py` | 129 | Smart FAQ with hybrid keyword + semantic matching |
 | `suggestions.py` | 200 | Proactive suggestion engine |
 | `macro_executor.py` | 170 | Macro execution with rate limiting |
+| `conversation_fsm.py` | 150 | Finite State Machine for conversations |
+| `onboarding.py` | 150 | Interactive welcome flow |
 
 ### Models (src/models/)
 
@@ -197,7 +202,7 @@ The main Modal app defining:
 
 #### Circuit Breakers (resilience.py)
 
-7 pre-configured circuits with states: CLOSED, OPEN, HALF_OPEN
+8 pre-configured circuits with states: CLOSED, OPEN, HALF_OPEN
 ```python
 exa_circuit = CircuitBreaker("exa_api", threshold=3, cooldown=30)
 tavily_circuit = CircuitBreaker("tavily_api", threshold=3, cooldown=30)
@@ -206,6 +211,7 @@ qdrant_circuit = CircuitBreaker("qdrant", threshold=5, cooldown=60)
 claude_circuit = CircuitBreaker("claude_api", threshold=3, cooldown=60)
 telegram_circuit = CircuitBreaker("telegram_api", threshold=5, cooldown=30)
 gemini_circuit = CircuitBreaker("gemini_api", threshold=3, cooldown=60)
+evolution_circuit = CircuitBreaker("evolution_api", threshold=5, cooldown=30)
 ```
 
 Features:
@@ -246,7 +252,7 @@ Features:
 - **User modes**: simple, routed, auto
 - **Conversation persistence**: Last 20 messages per user
 
-## Skills (agents/skills/ - 53 total)
+## Skills (agents/skills/ - 61 total)
 
 Organized by deployment type:
 
@@ -288,10 +294,11 @@ Deployed to Modal.com:
 **Utilities:**
 - `raffle-winner-picker/`, `domain-name-brainstormer/`, `theme-factory/`
 
-### Hybrid (7)
+### Hybrid (13)
 Both local and remote execution:
 - `better-auth/`, `chrome-devtools/`, `mcp-builder/`, `mcp-management/`
 - `repomix/`, `sequential-thinking/`, `webapp-testing/`
+- `skill-share/`, `worktree-manager/`, `image-enhancer/` (also local)
 
 ### Skill Structure
 
@@ -346,25 +353,29 @@ deployment: local|remote|both    # Determines execution environment
 | `/skills` | All | Browse skills (inline menu) |
 | `/skill <name> <task>` | All | Execute skill |
 | `/mode <simple\|routed\|auto>` | All | Set execution mode |
-| `/translate <text>` | All | Translate to English |
-| `/summarize <text>` | All | Summarize text |
-| `/rewrite <text>` | All | Improve text |
+| `/onboarding` | All | Start interactive onboarding |
+| `/suggest` | All | Get proactive suggestions |
 | `/task <id>` | User+ | Check local task status |
 | `/cancel` | User+ | Cancel pending task |
+| `/capture <text>` | User+ | Capture note/task to PKM |
+| `/inbox` | User+ | View PKM inbox |
+| `/notes [query]` | User+ | Search PKM notes |
+| `/tasks` | User+ | View PKM tasks |
+| `/profile [set]` | All | View/edit user profile |
+| `/context [set/clear]` | All | Manage work context |
+| `/macro [add/list/del]` | All | Personal macro management |
+| `/activity [stats]` | All | View activity history |
+| `/forget` | All | Delete all personal data (GDPR) |
 | `/traces [limit]` | Developer+ | Recent execution traces |
 | `/trace <id>` | Developer+ | Trace details |
 | `/circuits` | Developer+ | Circuit breaker status |
+| `/sla` | Developer+ | View UX Metrics & SLA |
 | `/grant <id> <tier>` | Admin | Grant user tier |
 | `/revoke <id>` | Admin | Revoke user access |
 | `/admin reset <circuit>` | Admin | Reset circuit breaker |
 | `/remind <time> <msg>` | Admin | Set reminder |
 | `/reminders` | Admin | List reminders |
-| `/profile [set]` | All | View/edit user profile |
-| `/context [set/clear]` | All | Manage work context |
-| `/macro [add/list/del]` | All | Personal macro management |
-| `/activity [stats]` | All | View activity history |
-| `/suggest` | All | Get proactive suggestions |
-| `/forget` | All | Delete all personal data (GDPR) |
+| `/faq` | Admin | Manage FAQ entries |
 
 ## Technology Stack
 
@@ -630,15 +641,18 @@ content/{userId}/{fileId}.{ext}    # Generated content (24h link, 7-day retentio
 
 ## LLM Models (via ai4u.now API)
 
-| Purpose | Model | File |
-|---------|-------|------|
-| All calls | `kiro-claude-opus-4-5-agentic` | `llm.py`, `main.py`, `complexity.py`, `intent.py` |
+Configuration centralized in `src/config/models.py`:
 
-Note: Haiku model not available via Anthropic SDK on ai4u.now proxy.
+| Purpose | Model | Fallback |
+|---------|-------|----------|
+| Complex/Agentic | `gemini-claude-opus-4-5-thinking` | `kiro-claude-opus-4-5-agentic` |
+| Simple/Fast | `gemini-3-flash-preview` | `kiro-claude-haiku-4-5` |
 
-Available models on API (OpenAI SDK only):
-- **Claude**: `kiro-claude-opus-4-5`, `kiro-claude-sonnet-4-5`, `kiro-claude-sonnet-4`, `kiro-claude-haiku-4-5`
-- **Claude Agentic**: `kiro-claude-opus-4-5-agentic`, `kiro-claude-sonnet-4-5-agentic`, `kiro-claude-sonnet-4-agentic`
+Override via `ANTHROPIC_MODEL` and `ANTHROPIC_MODEL_FAST` env vars.
+
+Available models on api.ai4u.now:
+- **Gemini-Claude**: `gemini-claude-sonnet-4-5`, `gemini-claude-sonnet-4-5-thinking`, `gemini-claude-opus-4-5-thinking`
+- **Kiro-Claude**: `kiro-claude-opus-4-5`, `kiro-claude-sonnet-4-5`, `kiro-claude-sonnet-4`, `kiro-claude-haiku-4-5` (+ agentic variants)
 - **Gemini**: `gemini-3-flash-preview`, `gemini-3-pro-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`
 
 ## Related Documents

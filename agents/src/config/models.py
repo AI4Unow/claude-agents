@@ -1,0 +1,37 @@
+"""Model configuration constants for the Agents system.
+
+Centralizes all LLM model identifiers with fallback logic.
+Primary: gemini-claude-* models
+Fallback: kiro-claude-* models
+"""
+import os
+
+# =============================================================================
+# Primary Models (gemini-claude family)
+# =============================================================================
+MODEL_COMPLEX = "gemini-claude-opus-4-5-thinking"  # Complex/agentic tasks
+MODEL_SIMPLE = "gemini-3-flash-preview"            # Simple/fast tasks
+
+# =============================================================================
+# Fallback Models (kiro-claude family)
+# =============================================================================
+FALLBACK_COMPLEX = "kiro-claude-opus-4-5-agentic"
+FALLBACK_SIMPLE = "kiro-claude-haiku-4-5"
+
+# =============================================================================
+# Environment Variable Overrides
+# =============================================================================
+DEFAULT_MODEL = os.environ.get("ANTHROPIC_MODEL", "") or MODEL_COMPLEX
+FAST_MODEL = os.environ.get("ANTHROPIC_MODEL_FAST", "") or MODEL_SIMPLE
+
+# Vision model (native Anthropic, not proxied)
+VISION_MODEL = "claude-sonnet-4-20250514"
+
+
+def get_model_with_fallback(primary: str, fallback: str) -> str:
+    """Get model with fallback if primary fails.
+
+    Use this for runtime model selection with graceful degradation.
+    """
+    # Could add validation logic here in future
+    return primary

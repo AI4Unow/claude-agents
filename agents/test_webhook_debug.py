@@ -6,7 +6,7 @@ import sys
 # Simulate Modal environment
 os.environ.setdefault("ANTHROPIC_API_KEY", "dummy-key")
 os.environ.setdefault("ANTHROPIC_BASE_URL", "https://api.ai4u.now")
-os.environ.setdefault("ANTHROPIC_MODEL", "kiro-claude-opus-4-5-agentic")
+# Use centralized config default (set via ANTHROPIC_MODEL env var if needed)
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "dummy-token")
 
 sys.path.insert(0, "/Users/nad/Library/CloudStorage/OneDrive-Personal/Agents/agents")

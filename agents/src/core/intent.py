@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, Literal, Optional
 
+from src.config import FAST_MODEL
 from src.utils.logging import get_logger
 
 logger = get_logger()
@@ -35,9 +36,9 @@ class IntentResult:
 
 # Keywords indicating user wants a specific skill capability
 SKILL_KEYWORDS = {
-    # Research
+    # Research (deep research, not web search)
     "research", "investigate", "deep dive", "find out about", "look up",
-    "analyze", "study", "explore", "search for",
+    "analyze", "study", "explore",
     # Design/Creative
     "design", "create image", "generate image", "draw", "poster", "logo",
     "mockup", "wireframe", "ui design", "ux design", "banner",
@@ -52,6 +53,14 @@ SKILL_KEYWORDS = {
     "extract audio", "convert video",
     # Data
     "analyze data", "chart", "graph", "statistics", "parse",
+}
+
+# Keywords that should use CHAT intent (require tool access via agentic loop)
+CHAT_WITH_TOOLS_KEYWORDS = {
+    "search the web", "web search", "search online", "look up online",
+    "find on the web", "google", "search for", "current news",
+    "latest news", "today's news", "weather", "stock price",
+    "current price", "what's happening", "recent events",
 }
 
 # Keywords indicating complex multi-step task
@@ -98,7 +107,14 @@ def fast_intent_check(message: str) -> Optional[IntentType]:
     """
     msg_lower = message.lower()
 
-    # Check chat patterns first (most common) - uses pre-compiled regex
+    # Check CHAT_WITH_TOOLS first (web search, weather, etc.)
+    # These need CHAT intent to get tool access via agentic loop
+    for keyword in CHAT_WITH_TOOLS_KEYWORDS:
+        if keyword in msg_lower:
+            logger.debug("intent_needs_tools", keyword=keyword)
+            return "chat"
+
+    # Check chat patterns (most common) - uses pre-compiled regex
     for pattern in CHAT_PATTERNS:
         if pattern.match(msg_lower):
             return "chat"
@@ -148,9 +164,9 @@ def classify_intent_sync(message: str) -> IntentType:
         client = get_llm_client()
         prompt = INTENT_PROMPT.format(message=message[:500])
 
-        # Use Haiku for fast classification
+        # Use fast model for classification
         response = client.client.messages.create(
-            model="kiro-claude-opus-4-5-agentic",
+            model=FAST_MODEL,
             max_tokens=10,
             messages=[{"role": "user", "content": prompt}]
         )

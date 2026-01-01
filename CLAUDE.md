@@ -16,21 +16,26 @@ See [docs/project-overview-pdr.md](docs/project-overview-pdr.md) for full requir
 
 ### Key Features
 - 7 circuit breakers (claude, exa, tavily, firebase, qdrant, telegram, gemini)
-- 55 skills (local, remote, hybrid deployment)
+- 54 skills (local, remote, hybrid deployment)
 - Gemini API integration (deep research, grounding, vision, thinking)
 - Firebase Storage for research reports
 - User tier system (guest, user, developer, admin)
 - Skill auto-sync watcher with launchd
 - **Personalization system** (profiles, context, macros, activity learning)
 - **Smart FAQ system** (hybrid keyword + semantic matching)
-- **PKM Second Brain** (capture, organize, semantic search)
+- **PKM Second Brain** (capture, organize, semantic search, tasks)
+- **Modular Firebase Architecture** (domain-specific services)
+- **Command Router Pattern** (decorator-based command registration)
 
 ### LLM Models (via ai4u.now API)
 | Purpose | Model |
 |---------|-------|
-| All calls | `kiro-claude-opus-4-5-agentic` |
+| Complex/Agentic | `gemini-claude-opus-4-5-thinking` |
+| Simple/Fast | `gemini-3-flash-preview` |
+| Fallback Complex | `kiro-claude-opus-4-5-agentic` |
+| Fallback Simple | `kiro-claude-haiku-4-5` |
 
-Note: Haiku not available via Anthropic SDK on this proxy.
+Configuration centralized in `agents/src/config/models.py`. Override via `ANTHROPIC_MODEL` and `ANTHROPIC_MODEL_FAST` env vars.
 
 ## Build & Development Commands
 

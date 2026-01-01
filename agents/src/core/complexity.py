@@ -7,6 +7,7 @@ Classifies messages as SIMPLE or COMPLEX to route to appropriate handler:
 import re
 from typing import Literal
 
+from src.config import FAST_MODEL
 from src.utils.logging import get_logger
 
 logger = get_logger()
@@ -93,9 +94,9 @@ def classify_complexity_sync(message: str) -> ComplexityType:
         client = get_llm_client()
         prompt = COMPLEXITY_PROMPT.format(message=message[:500])
 
-        # Use Haiku for fast classification (sync call)
+        # Use fast model for classification (sync call)
         response = client.client.messages.create(
-            model="kiro-claude-opus-4-5-agentic",
+            model=FAST_MODEL,
             max_tokens=10,
             messages=[{"role": "user", "content": prompt}]
         )
