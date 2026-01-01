@@ -121,6 +121,12 @@ from .pkm import (
     get_tasks,
 )
 
+# UX Metrics
+from .ux_metrics import (
+    UXMetricsService,
+    get_ux_metrics_service,
+)
+
 # For compatibility with old imports
 def get_storage_bucket():
     """Get Firebase Storage bucket (legacy function for compatibility)."""
@@ -227,4 +233,8 @@ __all__ = [
     "list_items",
     "get_inbox",
     "get_tasks",
+
+    # UX Metrics
+    "UXMetricsService",
+    "get_ux_metrics_service",
 ]
