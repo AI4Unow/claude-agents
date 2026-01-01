@@ -49,43 +49,27 @@ async def test_mode_command(telegram_client, bot_username):
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_translate_command(telegram_client, bot_username):
-    """Test /translate works."""
-    response = await send_and_wait(
-        telegram_client,
-        bot_username,
-        "/translate Bonjour le monde",
-        timeout=30
-    )
+async def test_profile_command(telegram_client, bot_username):
+    """Test /profile shows user profile."""
+    response = await send_and_wait(telegram_client, bot_username, "/profile", timeout=30)
 
-    assert response is not None, "No response to /translate"
-
-    # Should contain English translation
+    assert response is not None, "No response to /profile"
     text = response.text.lower()
-    assert any(word in text for word in ["hello", "world", "greet"]), \
-        f"Translation not recognized: {text[:100]}"
+
+    # Should contain profile info
+    assert any(word in text for word in ["profile", "preference", "language", "name"]), \
+        f"Profile info not found: {text[:100]}"
 
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_summarize_command(telegram_client, bot_username):
-    """Test /summarize works."""
-    long_text = (
-        "This is a test paragraph that contains multiple sentences. "
-        "It discusses various topics including testing, automation, and bots. "
-        "The purpose is to verify that the summarization feature works correctly. "
-        "We expect a shorter version of this text."
-    )
+async def test_context_command(telegram_client, bot_username):
+    """Test /context shows personalization context."""
+    response = await send_and_wait(telegram_client, bot_username, "/context", timeout=30)
 
-    response = await send_and_wait(
-        telegram_client,
-        bot_username,
-        f"/summarize {long_text}",
-        timeout=30
-    )
-
-    assert response is not None, "No response to /summarize"
-    assert len(response.text) > 20, "Summary too short"
+    assert response is not None, "No response to /context"
+    # Should have some content
+    assert len(response.text) > 10, "Context response too short"
 
 
 @pytest.mark.e2e

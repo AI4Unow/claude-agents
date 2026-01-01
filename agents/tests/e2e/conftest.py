@@ -15,8 +15,12 @@ def pytest_configure(config):
 
 @pytest.fixture(scope="session")
 def event_loop():
-    """Create event loop for session-scoped async fixtures."""
+    """Create event loop for session-scoped async fixtures.
+
+    Set as the current event loop to avoid Telethon mismatch errors.
+    """
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     yield loop
     loop.close()
 
@@ -42,20 +46,42 @@ def e2e_env():
 
 
 @pytest.fixture(scope="session")
-async def telegram_client(e2e_env, event_loop):
-    """Create and connect Telethon client."""
+async def telegram_client(e2e_env):
+    """Create and connect Telethon client.
+
+    Requires prior authentication via auth_session.py.
+    The session file must exist and be valid.
+    """
     from telethon import TelegramClient
 
-    # Use file session for persistence
+    # Use file session for persistence (without .session extension)
+    session_path = SESSION_DIR / SESSION_NAME
+
+    # Check session file exists
     session_file = SESSION_DIR / f"{SESSION_NAME}.session"
+    if not session_file.exists():
+        pytest.skip(
+            f"Session file not found: {session_file}\n"
+            "Run: python3 tests/e2e/auth_session.py"
+        )
 
     client = TelegramClient(
-        str(session_file),
+        str(session_path),
         e2e_env["api_id"],
         e2e_env["api_hash"]
     )
 
-    await client.start(phone=e2e_env["phone"])
+    # Connect without starting auth flow (session should be valid)
+    await client.connect()
+
+    # Verify we're authorized
+    if not await client.is_user_authorized():
+        await client.disconnect()
+        pytest.skip(
+            "Session expired or invalid. Re-authenticate:\n"
+            "python3 tests/e2e/auth_session.py"
+        )
+
     yield client
     await client.disconnect()
 
@@ -126,23 +152,39 @@ async def send_and_wait(
     """
     import time
 
-    # Record time before sending
-    before_send = time.time()
+    # Small delay to avoid message overlap from previous tests
+    await asyncio.sleep(0.5)
+
+    # Get the message ID of the most recent bot message before we send
+    messages_before = await client.get_messages(bot_username, limit=1)
+    last_msg_id = messages_before[0].id if messages_before else 0
 
     # Send message
-    await client.send_message(bot_username, text)
+    print(f"[E2E] Sending '{text}' to {bot_username}")
+    sent_msg = await client.send_message(bot_username, text)
+    print(f"[E2E] Message sent (id={sent_msg.id}), waiting up to {timeout}s for response...")
 
-    # Wait for response newer than our message
+    # Wait for response with ID greater than our sent message
     start = time.time()
     while time.time() - start < timeout:
-        messages = await client.get_messages(bot_username, limit=3)
+        messages = await client.get_messages(bot_username, limit=5)
         for msg in messages:
             if msg.out:
                 continue
-            # Response must be after we sent
-            if msg.date.timestamp() > before_send:
+            # Response must have ID greater than our sent message
+            if msg.id > sent_msg.id:
+                # Skip "Processing..." placeholder messages
+                if msg.text and "processing" in msg.text.lower() and len(msg.text) < 50:
+                    continue
+                print(f"[E2E] Got response (id={msg.id}): {msg.text[:100] if msg.text else '(no text)'}...")
                 return msg
 
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1)
+
+    print(f"[E2E] Timeout after {timeout}s - no response received")
+    # Debug: show last messages
+    messages = await client.get_messages(bot_username, limit=3)
+    for i, msg in enumerate(messages):
+        print(f"[E2E] Last msg {i}: id={msg.id} out={msg.out}, text={msg.text[:50] if msg.text else '(none)'}...")
 
     return None
