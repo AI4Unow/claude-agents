@@ -96,3 +96,17 @@ async def reset_circuits_endpoint(_: bool = Depends(verify_admin_token_dep)):
 
     reset_all_circuits()
     return {"message": "All circuits reset"}
+
+
+@router.get("/quality")
+async def get_quality_endpoint(_: bool = Depends(verify_admin_token_dep)):
+    """Get LLM response quality metrics.
+
+    Admin only. Requires X-Admin-Token header.
+
+    Returns:
+        Quality stats: total, refusal_rate, blocked_rate, avg_length, by_model
+    """
+    from src.services.llm import get_quality_stats
+
+    return get_quality_stats()

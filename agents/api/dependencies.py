@@ -110,6 +110,6 @@ async def verify_admin_token(x_admin_token: str = Header(None)):
     expected_token = os.environ.get("ADMIN_TOKEN")
     if not expected_token:
         raise HTTPException(status_code=500, detail="Admin token not configured")
-    if not x_admin_token or x_admin_token != expected_token:
+    if not x_admin_token or not hmac.compare_digest(x_admin_token, expected_token):
         raise HTTPException(status_code=401, detail="Invalid or missing admin token")
     return True
