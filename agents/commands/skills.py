@@ -85,9 +85,14 @@ async def skill_command(args: str, user: dict, chat_id: int) -> str:
 <b>Usage:</b> /skill {skill.name} <your task>"""
 
     # Execute skill
-    from src.execution.skill_executor import execute_skill_simple
-    from src.services.telegram import format_skill_result
+    import sys
     import time
+    main_module = sys.modules.get("main")
+    if not main_module:
+        import main as main_module
+    execute_skill_simple = main_module.execute_skill_simple
+
+    from src.services.telegram import format_skill_result
 
     start = time.time()
     result = await execute_skill_simple(skill_name, task, {"user": user})

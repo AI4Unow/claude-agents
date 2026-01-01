@@ -291,14 +291,26 @@ class ChaosRunner:
     # ==================== Circuit Breaker Tests ====================
 
     async def test_circuit_status(self):
-        """Check /circuits endpoint responds."""
+        """Check /circuits endpoint responds (requires auth)."""
+        import os
         name = "circuit_status_endpoint"
         start = time.time()
         try:
-            response = await self.client.get(f"{self.base_url}/api/circuits")
+            admin_token = os.environ.get("ADMIN_API_TOKEN")
+            headers = {}
+            if admin_token:
+                headers["X-Admin-Token"] = admin_token
+
+            response = await self.client.get(
+                f"{self.base_url}/api/circuits",
+                headers=headers
+            )
             duration = (time.time() - start) * 1000
-            passed = response.status_code == 200
-            self._record(name, passed, "200", str(response.status_code), duration)
+            # 401 is acceptable if no auth token
+            passed = response.status_code == 200 or (
+                response.status_code == 401 and not admin_token
+            )
+            self._record(name, passed, "200 or 401 (no auth)", str(response.status_code), duration)
         except Exception as e:
             duration = (time.time() - start) * 1000
             self._record(name, False, "200", "exception", duration, str(e))
