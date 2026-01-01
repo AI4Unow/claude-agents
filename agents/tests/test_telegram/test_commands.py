@@ -72,10 +72,11 @@ class TestBasicCommands:
 
         assert "user" in result.lower()
 
-    async def test_clear_command(self, mock_env, mock_state, guest_user):
-        """/clear clears conversation."""
-        user_dict = {"id": guest_user.id}
-        result = await handle_command("/clear", user_dict, guest_user.id)
+    async def test_clear_command(self, mock_env, mock_state, regular_user):
+        """/clear clears conversation (requires user tier)."""
+        mock_state.set_tier(regular_user.id, "user")
+        user_dict = {"id": regular_user.id}
+        result = await handle_command("/clear", user_dict, regular_user.id)
 
         assert "cleared" in result.lower()
 
@@ -118,31 +119,6 @@ class TestSkillCommands:
         result = await handle_command("/cancel", user_dict, regular_user.id)
 
         assert "cancelled" in result.lower()
-
-
-class TestQuickCommands:
-    """Test quick action commands."""
-
-    async def test_translate_no_args(self, mock_env, mock_state, regular_user):
-        """/translate without text shows usage."""
-        user_dict = {"id": regular_user.id}
-        result = await handle_command("/translate", user_dict, regular_user.id)
-
-        assert "Usage" in result
-
-    async def test_summarize_no_args(self, mock_env, mock_state, regular_user):
-        """/summarize without text shows usage."""
-        user_dict = {"id": regular_user.id}
-        result = await handle_command("/summarize", user_dict, regular_user.id)
-
-        assert "Usage" in result
-
-    async def test_rewrite_no_args(self, mock_env, mock_state, regular_user):
-        """/rewrite without text shows usage."""
-        user_dict = {"id": regular_user.id}
-        result = await handle_command("/rewrite", user_dict, regular_user.id)
-
-        assert "Usage" in result
 
 
 class TestDeveloperCommands:

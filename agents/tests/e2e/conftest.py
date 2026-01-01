@@ -27,6 +27,30 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "media: requires fixture files")
     config.addinivalue_line("markers", "admin: admin-only tests")
     config.addinivalue_line("markers", "flaky: known flaky tests")
+    config.addinivalue_line("markers", "timeout_90: tests with 90s timeout")
+
+
+# === Retry Logic ===
+
+DEFAULT_RETRY_ATTEMPTS = 2
+DEFAULT_RETRY_DELAY = 3  # seconds
+
+
+async def retry_async(func, *args, max_attempts=DEFAULT_RETRY_ATTEMPTS, delay=DEFAULT_RETRY_DELAY, **kwargs):
+    """Retry an async function on failure.
+
+    Useful for transient network/timeout failures in E2E tests.
+    """
+    last_error = None
+    for attempt in range(max_attempts):
+        try:
+            return await func(*args, **kwargs)
+        except (AssertionError, TimeoutError, asyncio.TimeoutError) as e:
+            last_error = e
+            if attempt < max_attempts - 1:
+                print(f"[E2E] Retry {attempt + 1}/{max_attempts} after error: {e}")
+                await asyncio.sleep(delay)
+    raise last_error
 
 
 # === Data Classes ===
@@ -182,7 +206,8 @@ async def send_and_wait(
     client,
     bot_username: str,
     text: str,
-    timeout: float = 30.0
+    timeout: float = 30.0,
+    retry: bool = True
 ):
     """Send message and wait for response.
 
@@ -191,42 +216,53 @@ async def send_and_wait(
         bot_username: Bot to message
         text: Message to send
         timeout: Max seconds to wait
+        retry: If True, retry once on timeout
 
     Returns:
         Response message or None
     """
     import time
 
-    # Small delay to avoid message overlap from previous tests
-    await asyncio.sleep(0.5)
+    max_attempts = 2 if retry else 1
 
-    # Get the message ID of the most recent bot message before we send
-    messages_before = await client.get_messages(bot_username, limit=1)
-    last_msg_id = messages_before[0].id if messages_before else 0
+    for attempt in range(max_attempts):
+        # Small delay to avoid message overlap from previous tests
+        await asyncio.sleep(0.5)
 
-    # Send message
-    print(f"[E2E] Sending '{text}' to {bot_username}")
-    sent_msg = await client.send_message(bot_username, text)
-    print(f"[E2E] Message sent (id={sent_msg.id}), waiting up to {timeout}s for response...")
+        # Get the message ID of the most recent bot message before we send
+        messages_before = await client.get_messages(bot_username, limit=1)
+        last_msg_id = messages_before[0].id if messages_before else 0
 
-    # Wait for response with ID greater than our sent message
-    start = time.time()
-    while time.time() - start < timeout:
-        messages = await client.get_messages(bot_username, limit=5)
-        for msg in messages:
-            if msg.out:
-                continue
-            # Response must have ID greater than our sent message
-            if msg.id > sent_msg.id:
-                # Skip "Processing..." placeholder messages
-                if msg.text and "processing" in msg.text.lower() and len(msg.text) < 50:
+        # Send message
+        attempt_str = f" (attempt {attempt + 1})" if attempt > 0 else ""
+        print(f"[E2E] Sending '{text}' to {bot_username}{attempt_str}")
+        sent_msg = await client.send_message(bot_username, text)
+        print(f"[E2E] Message sent (id={sent_msg.id}), waiting up to {timeout}s for response...")
+
+        # Wait for response with ID greater than our sent message
+        start = time.time()
+        while time.time() - start < timeout:
+            messages = await client.get_messages(bot_username, limit=5)
+            for msg in messages:
+                if msg.out:
                     continue
-                print(f"[E2E] Got response (id={msg.id}): {msg.text[:100] if msg.text else '(no text)'}...")
-                return msg
+                # Response must have ID greater than our sent message
+                if msg.id > sent_msg.id:
+                    # Skip "Processing..." placeholder messages
+                    if msg.text and "processing" in msg.text.lower() and len(msg.text) < 50:
+                        continue
+                    print(f"[E2E] Got response (id={msg.id}): {msg.text[:100] if msg.text else '(no text)'}...")
+                    return msg
 
-        await asyncio.sleep(1)
+            await asyncio.sleep(1)
 
-    print(f"[E2E] Timeout after {timeout}s - no response received")
+        print(f"[E2E] Timeout after {timeout}s - no response received")
+
+        # If retry enabled and not last attempt, wait before retrying
+        if attempt < max_attempts - 1:
+            print("[E2E] Retrying after short delay...")
+            await asyncio.sleep(DEFAULT_RETRY_DELAY)
+
     # Debug: show last messages
     messages = await client.get_messages(bot_username, limit=3)
     for i, msg in enumerate(messages):

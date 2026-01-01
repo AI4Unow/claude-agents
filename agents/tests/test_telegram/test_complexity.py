@@ -115,20 +115,21 @@ class TestModeBasedRouting:
     """Test message routing based on user mode."""
 
     async def test_auto_mode_routes_simple(self, mock_env, mock_state, mock_llm, mock_telegram_api):
-        """Auto mode routes simple messages directly."""
+        """Auto mode routes simple messages to chat fast path."""
         from main import process_message
 
         mock_state.set_mode(123, "auto")
         mock_state.set_tier(123, "user")
 
-        with patch("src.core.complexity.classify_complexity", new_callable=AsyncMock, return_value="simple"), \
-             patch("main._run_simple", new_callable=AsyncMock, return_value="Simple response") as mock_simple, \
+        with patch("src.core.intent.classify_intent", new_callable=AsyncMock, return_value="chat"), \
+             patch("main.is_simple_chat", return_value=True), \
+             patch("main._run_chat_fast", new_callable=AsyncMock, return_value="Simple response") as mock_fast, \
              patch("main._run_orchestrated", new_callable=AsyncMock) as mock_orch:
 
             user = {"id": 123}
             result = await process_message("hello", user, 123, 1)
 
-        mock_simple.assert_called_once()
+        mock_fast.assert_called_once()
         mock_orch.assert_not_called()
 
     async def test_auto_mode_routes_complex(self, mock_env, mock_state, mock_llm, mock_telegram_api):
@@ -138,29 +139,31 @@ class TestModeBasedRouting:
         mock_state.set_mode(123, "auto")
         mock_state.set_tier(123, "user")
 
-        with patch("src.core.complexity.classify_complexity", new_callable=AsyncMock, return_value="complex"), \
-             patch("main._run_simple", new_callable=AsyncMock) as mock_simple, \
+        with patch("src.core.intent.classify_intent", new_callable=AsyncMock, return_value="orchestrate"), \
+             patch("main._run_chat_fast", new_callable=AsyncMock) as mock_fast, \
              patch("main._run_orchestrated", new_callable=AsyncMock, return_value="Orchestrated") as mock_orch:
 
             user = {"id": 123}
             result = await process_message("build a login system", user, 123, 1)
 
         mock_orch.assert_called_once()
-        mock_simple.assert_not_called()
+        mock_fast.assert_not_called()
 
     async def test_simple_mode_skips_classification(self, mock_env, mock_state, mock_llm, mock_telegram_api):
-        """Simple mode always uses direct LLM."""
+        """Simple mode always uses direct LLM (fast path for simple, _run_simple for complex)."""
         from main import process_message
 
         mock_state.set_mode(123, "simple")
         mock_state.set_tier(123, "user")
 
-        with patch("src.core.complexity.classify_complexity", new_callable=AsyncMock) as mock_classify, \
+        with patch("src.core.intent.classify_intent", new_callable=AsyncMock) as mock_classify, \
+             patch("main.is_simple_chat", return_value=False), \
              patch("main._run_simple", new_callable=AsyncMock, return_value="Response"):
 
             user = {"id": 123}
             result = await process_message("build a login", user, 123, 1)
 
+        # In simple mode, intent classification is skipped
         mock_classify.assert_not_called()
 
     async def test_routed_mode_uses_router(self, mock_env, mock_state, mock_llm, mock_telegram_api):
@@ -236,7 +239,8 @@ class TestProgressMessages:
         mock_state.set_mode(123, "simple")
         mock_state.set_tier(123, "user")
 
-        with patch("main._run_simple", new_callable=AsyncMock, return_value="Response"):
+        with patch("main.is_simple_chat", return_value=False), \
+             patch("main._run_simple", new_callable=AsyncMock, return_value="Response"):
             user = {"id": 123}
             await process_message("hello", user, 123, 1)
 
@@ -249,7 +253,8 @@ class TestProgressMessages:
         mock_state.set_mode(123, "simple")
         mock_state.set_tier(123, "user")
 
-        with patch("main._run_simple", new_callable=AsyncMock, side_effect=Exception("Test error")):
+        with patch("main.is_simple_chat", return_value=False), \
+             patch("main._run_simple", new_callable=AsyncMock, side_effect=Exception("Test error")):
             user = {"id": 123}
             result = await process_message("hello", user, 123, 1)
 

@@ -94,6 +94,7 @@ class TestAdminWorkflow:
     async def test_admin_resets_circuit(self, mock_env, mock_state, mock_telegram_api):
         """Admin resets open circuit."""
         admin = {"id": 999999999}
+        mock_state.set_tier(999999999, "admin")
 
         # Check circuits
         mock_circuits = {"claude_api": {"state": "open", "failures": 3, "cooldown_remaining": 45}}

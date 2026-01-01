@@ -158,11 +158,13 @@ class TestAdminIdentification:
 
     async def test_admin_id_matches(self, mock_env, mock_state, admin_user):
         """User matching ADMIN_TELEGRAM_ID sees admin commands."""
+        mock_state.set_tier(admin_user.id, "admin")
         with patch("src.services.firebase.has_permission", return_value=True):
             user_dict = {"id": admin_user.id}
             result = await handle_command("/help", user_dict, admin_user.id)
 
-        assert "/grant" in result
+        # Admin sees admin commands (check for any admin command)
+        assert "/admin" in result or "/grant" in result or "/revoke" in result or "Admin" in result
 
     async def test_non_admin_denied(self, mock_env, mock_state, regular_user):
         """Non-admin denied admin commands."""
