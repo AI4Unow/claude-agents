@@ -21,6 +21,7 @@ image = (
     .add_local_dir("api", remote_path="/root/api", copy=True)  # FastAPI routes
     .add_local_dir("commands", remote_path="/root/commands", copy=True)  # Command handlers
     .add_local_dir("skills", remote_path="/root/skills_source", copy=True)  # For deploy-time sync
+    .add_local_dir("tests", remote_path="/root/tests", copy=True)  # Test suites
 )
 
 # Skills volume - stores mutable info.md files (II Framework: Information layer)
@@ -183,6 +184,17 @@ async def execute_skill_simple(skill_name: str, task: str, context: dict) -> str
 
     if not skill:
         return f"Skill not found: {skill_name}"
+
+    # Telegram-chat needs full agentic loop with tools for web search
+    if skill_name == "telegram-chat":
+        from src.services.agentic import run_agentic_loop
+        user = context.get("user", {})
+        user_id = context.get("user_id", user.get("id", 0) if isinstance(user, dict) else 0)
+        return await run_agentic_loop(
+            user_message=task,
+            system=skill.get_system_prompt(),
+            user_id=user_id,
+        )
 
     llm = get_llm_client()
 
@@ -524,9 +536,29 @@ SIMPLE_CHAT_PATTERNS = {
     "gm", "gn", "gg",
 }
 
+# Keywords that require tool access (must use agentic loop)
+TOOL_REQUIRED_KEYWORDS = {
+    "search the web", "web search", "search online", "look up online",
+    "find on the web", "google", "search for", "current news",
+    "latest news", "today's news", "weather", "stock price",
+    "current price", "what's happening", "recent events",
+}
+
+
+def needs_tools(text: str) -> bool:
+    """Check if message requires tool access (web search, etc.)."""
+    text_lower = text.lower()
+    for keyword in TOOL_REQUIRED_KEYWORDS:
+        if keyword in text_lower:
+            return True
+    return False
+
 
 def is_simple_chat(text: str) -> bool:
     """Check if message is simple chat (greetings, thanks, etc.)."""
+    # Never use fast path if tools are needed
+    if needs_tools(text):
+        return False
     normalized = text.lower().strip().rstrip("!?.,:;")
     return normalized in SIMPLE_CHAT_PATTERNS or len(text) <= 10
 
@@ -2733,3 +2765,99 @@ def test_deep_research():
         if result.get('citations'):
             print(f"\n{'='*60}\nCITATIONS:\n{'='*60}\n")
             print(result['citations'])
+
+
+@app.function(
+    image=image,
+    secrets=[modal.Secret.from_name("exa-credentials"), modal.Secret.from_name("tavily-credentials")],
+    timeout=60
+)
+async def _test_web_search_remote():
+    """Test web search tool directly."""
+    from src.tools import init_default_tools, get_registry
+
+    init_default_tools()
+    registry = get_registry()
+
+    result = await registry.execute("web_search", {"query": "Bitcoin price today"})
+    return {
+        "success": result.success,
+        "data": result.data[:500] if result.data else "",
+        "error": result.error,
+    }
+
+
+@app.local_entrypoint()
+def test_web_search():
+    """Test web search tool."""
+    print("Testing web search on Modal...")
+    result = _test_web_search_remote.remote()
+    print(f"Success: {result['success']}")
+    if result['success']:
+        print(f"Data: {result['data']}")
+    else:
+        print(f"Error: {result['error']}")
+
+
+# ==================== Live Test Runner ====================
+
+@app.function(
+    image=image.pip_install("pytest", "pytest-asyncio"),
+    secrets=secrets,
+    timeout=600,
+)
+def _run_live_tests_remote(test_filter: str = None):
+    """Run live API tests on Modal with all secrets."""
+    import subprocess
+    import sys
+
+    # Build pytest command
+    cmd = [
+        sys.executable, "-m", "pytest",
+        "tests/live/",
+        "-v",
+        "--tb=short",
+        "-m", "live",
+    ]
+
+    if test_filter:
+        cmd.extend(["-k", test_filter])
+
+    print(f"Running: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    return {
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+    }
+
+
+@app.local_entrypoint()
+def run_live_tests(filter: str = None):
+    """Run live API tests on Modal.
+
+    Usage:
+        modal run agents/main.py::run_live_tests
+        modal run agents/main.py::run_live_tests --filter "llm"
+        modal run agents/main.py::run_live_tests --filter "gemini"
+        modal run agents/main.py::run_live_tests --filter "circuits"
+    """
+    print("Running live tests on Modal...")
+    result = _run_live_tests_remote.remote(filter)
+
+    print("\n" + "=" * 60)
+    print("STDOUT:")
+    print(result["stdout"])
+
+    if result["stderr"]:
+        print("\nSTDERR:")
+        print(result["stderr"])
+
+    print("=" * 60)
+    print(f"\nExit code: {result['returncode']}")
+
+    if result["returncode"] == 0:
+        print("✅ All tests passed!")
+    else:
+        print("❌ Some tests failed")

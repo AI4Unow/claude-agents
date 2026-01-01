@@ -117,7 +117,8 @@ class LLMClient:
         image_base64: str,
         prompt: str,
         media_type: str = "image/jpeg",
-        max_tokens: int = 1024
+        max_tokens: int = 1024,
+        model: str = "claude-sonnet-4-20250514"  # Use native Anthropic model for vision
     ) -> str:
         """Send image to Claude Vision for analysis.
 
@@ -126,6 +127,7 @@ class LLMClient:
             prompt: User prompt about the image
             media_type: Image MIME type (default: image/jpeg)
             max_tokens: Max response tokens
+            model: Vision model (must support image content blocks)
 
         Returns:
             Text response from Claude Vision
@@ -138,7 +140,7 @@ class LLMClient:
 
         try:
             response = self.client.messages.create(
-                model="kiro-claude-opus-4-5-agentic",  # Use Opus for vision
+                model=model,  # Use vision-capable model
                 max_tokens=max_tokens,
                 messages=[{
                     "role": "user",
@@ -159,7 +161,7 @@ class LLMClient:
                 }]
             )
             claude_circuit._record_success()
-            logger.info("vision_success", model="kiro-claude-opus-4-5-agentic")
+            logger.info("vision_success", model=model)
             return response.content[0].text
 
         except Exception as e:

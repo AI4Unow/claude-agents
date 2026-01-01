@@ -84,27 +84,27 @@ async def test_rate_limit_recovery(live_env):
 @pytest.mark.live
 @pytest.mark.asyncio
 async def test_vision_capability(live_env):
-    """Claude Vision API works.
+    """Gemini Vision API works.
 
-    Tests vision using a minimal 1x1 transparent PNG.
-    Verifies image encoding and API response.
+    Tests vision using Gemini (ai4u.now proxy doesn't support image content blocks).
+    Downloads a real image from the web to test.
     """
-    from src.services.llm import get_llm_client
+    from src.services.gemini import get_gemini_client
+    import httpx
     import base64
 
-    client = get_llm_client()
+    client = get_gemini_client()
 
-    # 1x1 pixel transparent PNG (smallest valid image)
-    tiny_png = base64.b64encode(
-        bytes.fromhex("89504e470d0a1a0a0000000d49484452"
-                      "00000001000000010100000000376ef9"
-                      "240000000a49444154789c626001000001"
-                      "8101000afc010002580000")
-    ).decode()
+    # Fetch a small test image from httpbin (returns 100x100 PNG)
+    async with httpx.AsyncClient() as http:
+        resp = await http.get("https://httpbin.org/image/png", timeout=10.0)
+        image_bytes = resp.content
 
-    response = client.chat_with_image(
-        image_base64=tiny_png,
-        prompt="Describe this image in one word.",
+    image_b64 = base64.b64encode(image_bytes).decode()
+
+    response = await client.analyze_image(
+        image_base64=image_b64,
+        prompt="Describe what you see in this image briefly.",
         media_type="image/png"
     )
 
