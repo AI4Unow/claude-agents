@@ -2,7 +2,7 @@
 
 Centralizes all LLM model identifiers with fallback logic.
 Primary: gemini-claude-* models
-Fallback: kiro-claude-* models
+Fallback: gemini-claude-* models (same as primary)
 """
 import os
 
@@ -13,10 +13,10 @@ MODEL_COMPLEX = "gemini-claude-opus-4-5-thinking"  # Complex/agentic tasks
 MODEL_SIMPLE = "gemini-3-flash-preview"            # Simple/fast tasks
 
 # =============================================================================
-# Fallback Models (kiro-claude family)
+# Fallback Models (same as primary - gemini-claude family)
 # =============================================================================
-FALLBACK_COMPLEX = "kiro-claude-opus-4-5-agentic"
-FALLBACK_SIMPLE = "kiro-claude-haiku-4-5"
+FALLBACK_COMPLEX = "gemini-claude-opus-4-5-thinking"
+FALLBACK_SIMPLE = "gemini-3-flash-preview"
 
 # =============================================================================
 # Environment Variable Overrides
