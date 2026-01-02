@@ -4,12 +4,12 @@
 
 **Phase:** Production MVP
 **Deploy URL:** https://duc-a-nguyen--claude-agents-telegramchatagent-app.modal.run
-**Last Updated:** Jan 1, 2026
+**Last Updated:** Jan 2, 2026
 
 **Statistics:**
 - **61 skills** in agents/skills/ directory (8 local, 40+ remote, 13 hybrid)
-- **70+ Python files** in agents/src/
-- **37 test files** (unit + stress tests with Locust framework)
+- **90+ Python files** in agents/src/
+- **40 test files** (unit + stress tests with Locust framework)
 - **~2,000 lines** in main.py
 - **8 circuit breakers** (exa, tavily, firebase, qdrant, claude, telegram, gemini, evolution)
 - **18 API endpoints** (health, webhooks, skill execution, reports, traces, circuits)
@@ -29,6 +29,8 @@
 - **Command Router Pattern** (decorator-based command registration)
 - **Content download links** (24h signed URLs for all content skills)
 - **WhatsApp Evolution API** (alternative messaging channel)
+- **Smart Task Management** (NLP parsing, calendar sync, React dashboard)
+- **Claude Agents SDK** (hooks, tools, checkpointing for agent autonomy)
 
 ## Repository Structure
 
