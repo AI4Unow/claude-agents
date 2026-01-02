@@ -54,7 +54,7 @@ def get_db():
 @lru_cache(maxsize=1)
 def _init_storage_once():
     """Initialize Cloud Storage once (thread-safe)."""
-    bucket_name = os.environ.get("FIREBASE_STORAGE_BUCKET", "agents-d296a.firebasestorage.app")
+    bucket_name = os.environ.get("FIREBASE_STORAGE_BUCKET", "ai4unow.firebasestorage.app")
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     logger.info("storage_initialized", bucket=bucket_name)
