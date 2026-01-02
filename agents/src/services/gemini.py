@@ -13,14 +13,32 @@ logger = get_logger()
 
 
 def _setup_gcp_credentials() -> None:
-    """Set up GCP credentials from environment JSON."""
+    """Set up GCP credentials from environment JSON.
+
+    Note: Uses delete=False because SDK needs file to persist during session.
+    Cleanup happens on process exit via atexit handler.
+    """
+    import atexit
+
     creds_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
     if creds_json and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
         # Write JSON to temp file and set env var
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write(creds_json)
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = f.name
-            logger.info("gcp_credentials_setup", path=f.name)
+            creds_path = f.name
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
+            logger.info("gcp_credentials_setup", path=creds_path)
+
+            # Register cleanup on process exit
+            def cleanup_creds():
+                try:
+                    if os.path.exists(creds_path):
+                        os.unlink(creds_path)
+                        logger.debug("gcp_credentials_cleanup", path=creds_path)
+                except Exception:
+                    pass  # Best effort cleanup
+
+            atexit.register(cleanup_creds)
 
 
 @dataclass

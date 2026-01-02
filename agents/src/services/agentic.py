@@ -19,6 +19,15 @@ TIER_MAX_ITERATIONS = {
 }
 MAX_ITERATIONS = 100  # Default fallback
 
+# Wall-clock timeout (seconds) - prevents runaway loops
+TIER_TIMEOUT_SECONDS = {
+    "guest": 60,       # 1 minute
+    "user": 300,       # 5 minutes
+    "developer": 600,  # 10 minutes
+    "admin": 1800,     # 30 minutes (deep research)
+}
+DEFAULT_TIMEOUT = 300  # 5 minute default
+
 
 async def run_agentic_loop(
     user_message: str,
@@ -77,6 +86,10 @@ async def _execute_loop(
     registry = get_registry()
     tools = registry.get_definitions()
 
+    # Debug: Log registered tools
+    tool_names = [t.get("name", "?") for t in tools] if tools else []
+    logger.info("agentic_tools_available", count=len(tools), tools=tool_names)
+
     # Load conversation history from StateManager
     state = get_state_manager()
     messages = []
@@ -90,18 +103,29 @@ async def _execute_loop(
     llm = get_llm_client()
     iterations = 0
     accumulated_text = []
+    start_time = time.monotonic()  # For wall-clock timeout
 
-    # Get tier-based iteration limit
+    # Get tier-based limits
     max_iter = MAX_ITERATIONS
+    timeout_seconds = DEFAULT_TIMEOUT
     if user_id:
         tier = await state.get_user_tier_cached(user_id)
         max_iter = TIER_MAX_ITERATIONS.get(tier, MAX_ITERATIONS)
-        logger.info("agentic_tier_limit", tier=tier, max_iter=max_iter)
+        timeout_seconds = TIER_TIMEOUT_SECONDS.get(tier, DEFAULT_TIMEOUT)
+        logger.info("agentic_tier_limit", tier=tier, max_iter=max_iter, timeout=timeout_seconds)
 
     while iterations < max_iter:
         iterations += 1
         trace_ctx.increment_iteration()
-        logger.info("agentic_iteration", iteration=iterations)
+
+        # Check wall-clock timeout
+        elapsed = time.monotonic() - start_time
+        if elapsed > timeout_seconds:
+            logger.warning("agentic_timeout", iterations=iterations, elapsed_s=int(elapsed), timeout=timeout_seconds)
+            accumulated_text.append(f"\n\n⏱️ *Timeout reached* ({int(elapsed)}s). Returning partial results.")
+            break
+
+        logger.info("agentic_iteration", iteration=iterations, elapsed_s=int(elapsed))
 
         # Call LLM with tools
         response = llm.chat(

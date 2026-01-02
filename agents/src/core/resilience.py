@@ -62,6 +62,12 @@ def _sanitize_markdown(text: str) -> str:
     return re.sub(r'([*_`\[\]()~>#+=|{}.!\\-])', r'\\\1', str(text))
 
 
+def _sanitize_code_block(text: str) -> str:
+    """Sanitize text for Telegram code blocks - escape backticks to prevent breakout."""
+    # Replace triple backticks with single quotes to prevent code block escape
+    return str(text).replace('```', "'''").replace('`', "'")
+
+
 async def send_circuit_alert(circuit_name: str, event: str, details: Dict[str, Any]):
     """Send critical alert to admin via Telegram.
 
@@ -92,9 +98,10 @@ async def send_circuit_alert(circuit_name: str, event: str, details: Dict[str, A
 
     message = f"🚨 *Circuit Alert: {safe_name}*\n\n"
     message += f"Event: `{safe_event}`\n"
-    # Details in code block (pre-formatted, less injection risk)
+    # Details in code block - sanitize to prevent code block escape
     details_str = json.dumps(details, indent=2, default=str)[:1000]  # Truncate for Telegram limit
-    message += f"Details:\n```json\n{details_str}\n```"
+    safe_details = _sanitize_code_block(details_str)
+    message += f"Details:\n```json\n{safe_details}\n```"
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -374,6 +381,11 @@ telegram_circuit = CircuitBreaker("telegram_api", threshold=5, cooldown=30)
 gemini_circuit = CircuitBreaker("gemini_api", threshold=5, cooldown=60)
 evolution_circuit = CircuitBreaker("evolution_api", threshold=3, cooldown=30)
 
+# Calendar service circuits
+google_calendar_circuit = CircuitBreaker("google_calendar_api", threshold=5, cooldown=60)
+google_tasks_circuit = CircuitBreaker("google_tasks_api", threshold=5, cooldown=60)
+apple_caldav_circuit = CircuitBreaker("apple_caldav", threshold=5, cooldown=60)
+
 
 def get_circuit_stats() -> Dict[str, Dict]:
     """Get stats for all circuits."""
@@ -386,6 +398,9 @@ def get_circuit_stats() -> Dict[str, Dict]:
         "telegram_api": telegram_circuit.get_stats(),
         "gemini_api": gemini_circuit.get_stats(),
         "evolution_api": evolution_circuit.get_stats(),
+        "google_calendar_api": google_calendar_circuit.get_stats(),
+        "google_tasks_api": google_tasks_circuit.get_stats(),
+        "apple_caldav": apple_caldav_circuit.get_stats(),
     }
 
 
@@ -400,6 +415,9 @@ def get_circuit_status() -> Dict[str, str]:
         "telegram": telegram_circuit.state.value,
         "gemini": gemini_circuit.state.value,
         "evolution": evolution_circuit.state.value,
+        "google_calendar": google_calendar_circuit.state.value,
+        "google_tasks": google_tasks_circuit.state.value,
+        "apple_caldav": apple_caldav_circuit.state.value,
     }
 
 
@@ -413,6 +431,9 @@ def reset_all_circuits():
     telegram_circuit.reset()
     gemini_circuit.reset()
     evolution_circuit.reset()
+    google_calendar_circuit.reset()
+    google_tasks_circuit.reset()
+    apple_caldav_circuit.reset()
 
 
 def reset_circuit(name: str) -> bool:
@@ -433,6 +454,9 @@ def reset_circuit(name: str) -> bool:
         "telegram_api": telegram_circuit,
         "gemini_api": gemini_circuit,
         "evolution_api": evolution_circuit,
+        "google_calendar_api": google_calendar_circuit,
+        "google_tasks_api": google_tasks_circuit,
+        "apple_caldav": apple_caldav_circuit,
     }
 
     circuit = circuits.get(name)

@@ -48,6 +48,33 @@ secrets = [
 github_secret = modal.Secret.from_name("github-credentials")
 
 
+# ==================== Input Validation ====================
+
+# Maximum message length to prevent abuse
+MAX_MESSAGE_LENGTH = 32000  # ~32KB, well above normal usage
+
+def validate_user_input(text: str) -> tuple[str, str | None]:
+    """Validate and sanitize user input.
+
+    Returns:
+        Tuple of (sanitized_text, error_message) - error is None if valid.
+    """
+    if not text or not text.strip():
+        return "", "Empty message received."
+
+    # Length check
+    if len(text) > MAX_MESSAGE_LENGTH:
+        return "", f"Message too long ({len(text)} chars, max {MAX_MESSAGE_LENGTH})."
+
+    # Strip whitespace
+    sanitized = text.strip()
+
+    # Basic sanitization - remove null bytes and other control chars (except newlines, tabs)
+    sanitized = ''.join(c for c in sanitized if c == '\n' or c == '\t' or (ord(c) >= 32))
+
+    return sanitized, None
+
+
 def is_local_skill(skill_name: str) -> bool:
     """Check if skill requires local execution.
 
@@ -100,7 +127,7 @@ async def notify_task_queued(user_id: int, skill_name: str, task_id: str):
 def create_web_app():
     """Create FastAPI app with all routers. Lazy import to avoid module-level import errors."""
     from api.app import web_app
-    from api.routes import health, telegram, whatsapp, skills, reports, admin
+    from api.routes import health, telegram, whatsapp, skills, reports, admin, auth
 
     # Include all route modules
     web_app.include_router(health.router)
@@ -109,6 +136,7 @@ def create_web_app():
     web_app.include_router(skills.router)
     web_app.include_router(reports.router)
     web_app.include_router(admin.router)
+    web_app.include_router(auth.router)
     return web_app
 
 
@@ -760,6 +788,13 @@ async def process_message(
     import aiofiles
 
     logger = structlog.get_logger()
+
+    # Validate and sanitize input early
+    text, validation_error = validate_user_input(text)
+    if validation_error:
+        logger.warning("input_validation_failed", error=validation_error, user_id=user.get("id"))
+        return validation_error
+
     state = get_state_manager()
     user_id = user.get("id")
 
@@ -2080,14 +2115,27 @@ def sync_skills_from_github():
     token = os.environ.get("GITHUB_TOKEN", "")
     repo_dir = "/tmp/repo"
 
-    if os.path.exists(repo_dir):
-        subprocess.run(["git", "-C", repo_dir, "pull", "origin", branch], check=True)
-    else:
-        if token:
-            clone_url = f"https://{token}@github.com/{repo_url}.git"
+    # Prepare git environment (safer than token in URL - avoids process list exposure)
+    git_env = os.environ.copy()
+    if token:
+        # Use GIT_ASKPASS to provide credentials securely
+        askpass_script = "/tmp/git-askpass.sh"
+        with open(askpass_script, "w") as f:
+            f.write(f"#!/bin/sh\necho {token}\n")
+        os.chmod(askpass_script, 0o700)
+        git_env["GIT_ASKPASS"] = askpass_script
+        git_env["GIT_TERMINAL_PROMPT"] = "0"  # Disable interactive prompts
+
+    try:
+        if os.path.exists(repo_dir):
+            subprocess.run(["git", "-C", repo_dir, "pull", "origin", branch], check=True, env=git_env)
         else:
             clone_url = f"https://github.com/{repo_url}.git"
-        subprocess.run(["git", "clone", "--depth", "1", "-b", branch, clone_url, repo_dir], check=True)
+            subprocess.run(["git", "clone", "--depth", "1", "-b", branch, clone_url, repo_dir], check=True, env=git_env)
+    finally:
+        # Cleanup askpass script
+        if token and os.path.exists("/tmp/git-askpass.sh"):
+            os.unlink("/tmp/git-askpass.sh")
 
     src_skills = os.path.join(repo_dir, skills_path_in_repo)
     if os.path.exists(src_skills):
@@ -2146,9 +2194,25 @@ def sync_skills_from_github():
     timeout=120,
 )
 async def github_agent(task: dict):
-    """GitHub Agent - Repository automation."""
-    from src.agents.github_automation import process_github_task
-    return await process_github_task(task)
+    """GitHub Agent - Repository automation using SDK handler."""
+    import structlog
+    logger = structlog.get_logger()
+    
+    # Try SDK handler first, fallback to old implementation
+    try:
+        from src.sdk.github_handler import run_github_agent
+        
+        # Extract event type and payload from task
+        payload = task.get("payload", {})
+        event_type = payload.get("event_type", "task")
+        
+        result = await run_github_agent(event_type, payload)
+        return {"status": "success", "result": result}
+    except Exception as sdk_error:
+        logger.warning("github_sdk_fallback", error=str(sdk_error)[:100])
+        # Fallback to old implementation
+        from src.agents.github_automation import process_github_task
+        return await process_github_task(task)
 
 
 @app.function(
@@ -2293,9 +2357,27 @@ async def cleanup_content_files():
     timeout=120,
 )
 async def content_agent(task: dict):
-    """Content Agent - Content generation and transformation."""
-    from src.agents.content_generator import process_content_task
-    return await process_content_task(task)
+    """Content Agent - Content generation and transformation using SDK handler."""
+    import structlog
+    logger = structlog.get_logger()
+    
+    # Try SDK handler first, fallback to old implementation
+    try:
+        from src.sdk.content_handler import run_content_agent
+        
+        # Extract skill info from task
+        payload = task.get("payload", {})
+        user_id = payload.get("user_id", 0)
+        skill_name = payload.get("skill", "content")
+        params = payload.get("params", {})
+        
+        result = await run_content_agent(user_id, skill_name, params)
+        return {"status": "success", "result": result}
+    except Exception as sdk_error:
+        logger.warning("content_sdk_fallback", error=str(sdk_error)[:100])
+        # Fallback to old implementation
+        from src.agents.content_generator import process_content_task
+        return await process_content_task(task)
 
 
 @app.function(

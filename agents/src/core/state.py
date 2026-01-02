@@ -182,6 +182,9 @@ class StateManager:
     ):
         """Set to L1 cache and optionally L2 Firebase.
 
+        Uses write-through pattern: invalidate cache → write Firebase → set cache.
+        This prevents stale cache if Firebase write fails.
+
         Args:
             collection: Firestore collection name
             doc_id: Document ID
@@ -190,11 +193,18 @@ class StateManager:
             persist: Whether to write to Firebase
         """
         key = self._cache_key(collection, doc_id)
-        self._set_to_l1(key, data, ttl_seconds)
 
         if persist:
+            # Write-through: invalidate cache BEFORE Firebase write to prevent stale reads
+            with _cache_lock:
+                self._l1_cache.pop(key, None)
+
+            # Write to Firebase
             await self._firebase_set(collection, doc_id, data)
             self.logger.debug("persisted", key=key)
+
+        # Set to L1 cache after successful Firebase write (or if not persisting)
+        self._set_to_l1(key, data, ttl_seconds)
 
     async def invalidate(self, collection: str, doc_id: str):
         """Remove from L1 cache (thread-safe)."""
@@ -467,11 +477,20 @@ class StateManager:
         window_start = now - 60  # 1 minute window
 
         with _rate_limit_lock:
-            # Clean old entries
+            # Clean old entries for this user
             self._rate_counters[user_id] = [
                 ts for ts in self._rate_counters[user_id]
                 if ts > window_start
             ]
+
+            # LRU eviction: if too many users tracked, remove inactive ones
+            MAX_RATE_LIMIT_USERS = 10000
+            if len(self._rate_counters) > MAX_RATE_LIMIT_USERS:
+                # Find users with no recent activity (empty lists)
+                inactive = [uid for uid, ts_list in self._rate_counters.items()
+                           if not ts_list or max(ts_list) < window_start]
+                for uid in inactive[:len(self._rate_counters) - MAX_RATE_LIMIT_USERS]:
+                    del self._rate_counters[uid]
 
             current_count = len(self._rate_counters[user_id])
 
