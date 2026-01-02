@@ -214,6 +214,10 @@ class LLMClient:
 
         except Exception as e:
             error_str = str(e).lower()
+            # Auth errors (401/403) are config issues, not service outages - don't trip circuit
+            if "401" in error_str or "403" in error_str or "unauthorized" in error_str or "forbidden" in error_str:
+                logger.error("llm_auth_error", error=str(e)[:100])
+                raise  # Re-raise but don't record as circuit failure
             # Handle rate limiting (429) - don't count as circuit failure, retry after delay
             if "rate" in error_str or "429" in error_str or "too many" in error_str:
                 logger.warning("llm_rate_limited", error=str(e)[:100])

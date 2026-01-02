@@ -14,7 +14,7 @@ from pydantic import BaseModel
 import firebase_admin
 from firebase_admin import auth as firebase_auth
 
-from src.services.firebase._client import get_firebase_app
+from src.services.firebase._client import get_db
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -60,8 +60,8 @@ async def telegram_auth(data: TelegramAuthData) -> Dict[str, str]:
     if time.time() - data.auth_date > 86400:
         raise HTTPException(401, "Auth expired")
 
-    # Ensure Firebase is initialized
-    get_firebase_app()
+    # Ensure Firebase is initialized (get_db() triggers initialization)
+    get_db()
 
     # Create Firebase custom token
     try:
