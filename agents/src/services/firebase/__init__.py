@@ -21,7 +21,7 @@ from firebase_admin import firestore
 from .tiers import TierType, TIER_HIERARCHY, TIER_RATE_LIMITS
 from .faq import FAQEntry
 from .local_tasks import LocalTask
-from .pkm import PKMItem, ItemType, ItemStatus
+from .pkm import PKMItem, SmartTask, ItemType, ItemStatus, Priority, EnergyLevel
 
 # Users
 from .users import (
@@ -66,13 +66,14 @@ from .reports import (
     cleanup_expired_content,
 )
 
-# Reminders
-from .reminders import (
-    create_reminder,
-    get_due_reminders,
-    mark_reminder_sent,
-    get_user_reminders,
-    delete_reminder,
+# SmartTask (replaces reminders.py - hard cutover)
+from .pkm import (
+    create_smart_task,
+    get_smart_task,
+    update_smart_task,
+    delete_smart_task,
+    list_smart_tasks,
+    get_due_tasks,
 )
 
 # Local Tasks
@@ -134,9 +135,13 @@ def get_storage_bucket():
     return get_bucket()
 
 def init_firebase():
-    """Initialize Firebase (legacy function for compatibility)."""
+    """Initialize Firebase (legacy function for compatibility).
+
+    Returns:
+        Firestore client instance
+    """
     from ._client import get_db
-    get_db()  # Triggers initialization
+    return get_db()  # Triggers initialization and returns db client
 
 
 __all__ = [
@@ -153,8 +158,11 @@ __all__ = [
     "FAQEntry",
     "LocalTask",
     "PKMItem",
+    "SmartTask",
     "ItemType",
     "ItemStatus",
+    "Priority",
+    "EnergyLevel",
 
     # Users
     "get_user",
@@ -189,12 +197,13 @@ __all__ = [
     "get_report_content",
     "cleanup_expired_content",
 
-    # Reminders
-    "create_reminder",
-    "get_due_reminders",
-    "mark_reminder_sent",
-    "get_user_reminders",
-    "delete_reminder",
+    # SmartTask (replaces reminders)
+    "create_smart_task",
+    "get_smart_task",
+    "update_smart_task",
+    "delete_smart_task",
+    "list_smart_tasks",
+    "get_due_tasks",
 
     # Local Tasks
     "create_local_task",
