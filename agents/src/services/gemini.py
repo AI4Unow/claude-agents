@@ -300,7 +300,11 @@ Output as JSON array of strings, each a searchable query. Only output the JSON a
             if response_text.startswith("```"):
                 # Remove markdown code block
                 lines = response_text.split("\n")
-                response_text = "\n".join(lines[1:-1])
+                if len(lines) >= 3:
+                    response_text = "\n".join(lines[1:-1])
+                else:
+                    # Single line or no newlines - strip backticks directly
+                    response_text = response_text.strip("`").lstrip("json").strip()
 
             sub_queries = json.loads(response_text)
             thinking_trace.append(f"Decomposed into {len(sub_queries)} sub-queries")

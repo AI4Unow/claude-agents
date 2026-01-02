@@ -304,7 +304,11 @@ class LLMClient:
             )
             claude_circuit._record_success()
             logger.info("vision_success", model=model)
-            return response.content[0].text
+            # Extract text from first text block (handle ToolUseBlock gracefully)
+            for block in response.content:
+                if hasattr(block, 'type') and block.type == 'text' and hasattr(block, 'text'):
+                    return block.text
+            return str(response.content[0]) if response.content else ""
 
         except Exception as e:
             claude_circuit._record_failure(e)

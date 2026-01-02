@@ -4,6 +4,11 @@ import pytest
 from pathlib import Path
 from ..conftest import upload_file, execute_skill
 
+pytestmark = [
+    pytest.mark.requires_claude,  # Vision analysis requires LLM
+    pytest.mark.requires_gemini   # Uses Gemini Vision
+]
+
 
 class TestImageProcessing:
     """Tests for image upload and analysis."""

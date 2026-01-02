@@ -142,6 +142,45 @@ def create_web_app():
 
 # ==================== Skill Execution Functions ====================
 
+async def execute_or_queue_skill(
+    skill_name: str,
+    task: str,
+    user_id: int,
+    user: dict,
+    chat_id: int = None,
+    progress_msg_id: int = None
+) -> str:
+    """Execute remote skill or queue local skill.
+
+    Returns formatted response string.
+    Ensures consistent behavior between API and Telegram flows.
+    """
+    if is_local_skill(skill_name):
+        from src.services.firebase import create_local_task
+        from src.services.telegram import notify_task_queued
+
+        task_id = await create_local_task(
+            skill=skill_name,
+            task=task,
+            user_id=user_id
+        )
+
+        logger.info("local_skill_queued", skill=skill_name, task_id=task_id)
+
+        if user_id:
+            await notify_task_queued(user_id, skill_name, task_id)
+
+        return f"📋 Task queued for local execution.\nSkill: `{skill_name}`\nTask ID: `{task_id[:8]}...`"
+
+    # Remote skill - execute normally
+    if chat_id and progress_msg_id:
+        await edit_progress_message(chat_id, progress_msg_id, f"🎯 <i>{skill_name}</i>")
+
+    result = await execute_skill_simple(skill_name, task, {"user": user})
+    from src.services.telegram import format_skill_result
+    return format_skill_result(skill_name, result, 0)
+
+
 async def execute_skill_simple(skill_name: str, task: str, context: dict) -> str:
     """Execute a skill directly."""
     from src.skills.registry import get_registry
@@ -882,11 +921,15 @@ async def process_message(
             explicit = parse_explicit_skill(text, get_registry())
             if explicit:
                 skill_name, remaining_text = explicit
-                if is_telegram:
-                    await edit_progress_message(chat_id, progress_msg_id, f"🎯 <i>{skill_name}</i>")
-                result = await execute_skill_simple(skill_name, remaining_text or text, {"user": user})
-                from src.services.telegram import format_skill_result
-                response = format_skill_result(skill_name, result, 0)
+                # Use helper for consistent local/remote behavior
+                response = await execute_or_queue_skill(
+                    skill_name,
+                    remaining_text or text,
+                    user_id,
+                    user,
+                    chat_id if is_telegram else None,
+                    progress_msg_id if is_telegram else None
+                )
             else:
                 # Intent classification (CHAT/SKILL/ORCHESTRATE)
                 if is_telegram:
@@ -906,11 +949,15 @@ async def process_message(
                     router = SkillRouter()
                     skill = await router.route_single(text)
                     if skill:
-                        if is_telegram:
-                            await edit_progress_message(chat_id, progress_msg_id, f"🎯 <i>{skill.name}</i>")
-                        result = await execute_skill_simple(skill.name, text, {"user": user})
-                        from src.services.telegram import format_skill_result
-                        response = format_skill_result(skill.name, result, 0)
+                        # Use helper for consistent local/remote behavior
+                        response = await execute_or_queue_skill(
+                            skill.name,
+                            text,
+                            user_id,
+                            user,
+                            chat_id if is_telegram else None,
+                            progress_msg_id if is_telegram else None
+                        )
                     else:
                         # No skill matched, fall back to chat
                         response = await _run_simple(

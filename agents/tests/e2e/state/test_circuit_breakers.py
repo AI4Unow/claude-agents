@@ -3,6 +3,8 @@
 import pytest
 from ..conftest import verify_circuit_state, send_and_wait
 
+pytestmark = pytest.mark.no_llm  # Infrastructure tests (circuit state verification)
+
 # Expected circuit breakers
 CIRCUIT_BREAKERS = [
     "claude",

@@ -2,6 +2,8 @@
 import pytest
 from .conftest import send_and_wait
 
+pytestmark = pytest.mark.no_llm  # Infrastructure tests (skill routing, not execution)
+
 
 @pytest.mark.e2e
 @pytest.mark.asyncio

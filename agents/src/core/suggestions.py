@@ -48,14 +48,14 @@ async def get_proactive_suggestion(user_id: int) -> Optional[str]:
 
 
 async def _check_reminders(user_id: int) -> Optional[str]:
-    """Check for due or upcoming reminders."""
+    """Check for due or upcoming tasks with reminders."""
     try:
-        from src.services.firebase import get_user_reminders
-        reminders = await get_user_reminders(user_id, limit=1)
-        if reminders:
-            reminder = reminders[0]
-            message = reminder.get("message", "Reminder")[:100]
-            return f"⏰ <b>Reminder:</b> {message}"
+        from src.services.firebase import get_due_tasks
+        tasks = await get_due_tasks(user_id, limit=1)
+        if tasks:
+            task = tasks[0]
+            content = task.content[:100]
+            return f"⏰ <b>Due Task:</b> {content}"
         return None
     except Exception:
         return None

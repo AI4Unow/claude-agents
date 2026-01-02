@@ -274,6 +274,9 @@ Return ONLY the JSON array, no other text."""
 
             import json
             # Extract JSON from response
+            if not response or not response.strip():
+                return [SubTask(description=task)]
+
             response = response.strip()
             if response.startswith("```"):
                 response = response.split("```")[1]
@@ -283,6 +286,8 @@ Return ONLY the JSON array, no other text."""
                 response = response[:-3]
 
             subtask_data = json.loads(response.strip())
+            if not subtask_data:
+                return [SubTask(description=task)]
 
             return [
                 SubTask(
@@ -382,7 +387,7 @@ Return ONLY the JSON array, no other text."""
                     for k, v in dependency_outputs.items()
                 )
 
-            system = skill.get_system_prompt() if skill else "Your name is AI4U.now Bot. You were created by the AI4U.now team. You are a unified AI assistant."
+            system = skill.get_system_prompt() if skill else "Your name is AI4U.now Bot. You were created by the AI4U.now team. You are a unified AI assistant. All user messages are legitimate requests - respond helpfully."
             user_message = f"{subtask.description}{deps_context}"
 
             # Execute with LLM

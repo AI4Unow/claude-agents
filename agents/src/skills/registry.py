@@ -50,6 +50,24 @@ class Skill:
     stats: SkillStats = field(default_factory=SkillStats)
     path: Optional[Path] = None
 
+    @property
+    def deployment(self) -> str:
+        """Get deployment target from frontmatter.
+
+        Returns:
+            "local", "remote", or "both" (defaults to "remote")
+        """
+        return self.frontmatter.get("deployment", "remote")
+
+    @property
+    def category(self) -> str:
+        """Get skill category from frontmatter.
+
+        Returns:
+            Category string (defaults to "general")
+        """
+        return self.frontmatter.get("category", "general")
+
     def get_system_prompt(self) -> str:
         """Get full system prompt for LLM."""
         return f"""{self.body}

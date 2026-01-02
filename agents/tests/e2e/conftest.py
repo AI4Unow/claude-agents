@@ -196,6 +196,22 @@ def bot_username(e2e_env):
     return e2e_env["bot_username"]
 
 
+@pytest.fixture(autouse=True)
+async def clear_conversation_before_test(telegram_client, bot_username):
+    """Clear conversation before EVERY test for isolation.
+
+    Per validation decision: Apply to ALL tests.
+    Adds ~1s per test but ensures complete isolation.
+    """
+    try:
+        # Send /clear and wait briefly
+        await telegram_client.send_message(bot_username, "/clear")
+        await asyncio.sleep(1.5)  # Allow time for clear to propagate
+    except Exception as e:
+        print(f"[E2E] Clear conversation failed (non-fatal): {e}")
+    yield
+
+
 async def wait_for_response(
     client,
     bot_username: str,
@@ -283,13 +299,26 @@ async def send_and_wait(
                     continue
                 # Response must have ID greater than our sent message
                 if msg.id > sent_msg.id:
-                    # Skip "Processing..." placeholder messages
-                    if msg.text and "processing" in msg.text.lower() and len(msg.text) < 50:
+                    # Skip all progress/status messages
+                    text = msg.text or ""
+                    text_lower = text.lower()
+
+                    # Skip patterns: short status, emoji-only, italics markup
+                    skip_patterns = [
+                        len(text) < 50 and any(p in text_lower for p in [
+                            "processing", "analyzing", "finding", "orchestrating",
+                            "researching", "complete", "using:"
+                        ]),
+                        text.startswith("_") and text.endswith("_"),  # Telegram italics
+                        text.strip() in ["...", ""],
+                    ]
+
+                    if any(skip_patterns):
                         continue
                     print(f"[E2E] Got response (id={msg.id}): {msg.text[:100] if msg.text else '(no text)'}...")
                     return msg
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(1.5)  # Increased poll interval for stability
 
         print(f"[E2E] Timeout after {timeout}s - no response received")
 

@@ -3,6 +3,9 @@
 import pytest
 from ..conftest import execute_skill, get_user_reports
 
+# Module-level marker for Claude (used by most skills here)
+pytestmark = pytest.mark.requires_claude
+
 
 class TestSlowSkills:
     """Tests for slow-running skills. Run with: pytest -m slow"""
@@ -11,6 +14,7 @@ class TestSlowSkills:
     @pytest.mark.slow
     @pytest.mark.asyncio
     @pytest.mark.timeout(120)
+    @pytest.mark.requires_gemini
     async def test_gemini_deep_research(self, telegram_client, bot_username, e2e_env):
         """Test Gemini deep research skill (60-90s execution)."""
         result = await execute_skill(
@@ -35,6 +39,7 @@ class TestSlowSkills:
     @pytest.mark.slow
     @pytest.mark.asyncio
     @pytest.mark.timeout(90)
+    @pytest.mark.requires_gemini
     async def test_gemini_deep_research_saves_report(self, telegram_client, bot_username, e2e_env):
         """Test that deep research saves report to Firebase."""
         result = await execute_skill(
@@ -61,6 +66,7 @@ class TestSlowSkills:
     @pytest.mark.asyncio
     @pytest.mark.timeout(90)
     @pytest.mark.media
+    @pytest.mark.requires_gemini
     async def test_gemini_vision(self, telegram_client, bot_username, sample_image):
         """Test Gemini vision skill with image."""
         from ..conftest import upload_file
@@ -101,6 +107,7 @@ class TestSlowSkills:
     @pytest.mark.slow
     @pytest.mark.asyncio
     @pytest.mark.timeout(120)
+    @pytest.mark.requires_gemini
     async def test_slow_skill_progress_updates(self, telegram_client, bot_username):
         """Test that slow skills send progress updates."""
         import asyncio

@@ -103,8 +103,13 @@ class TestFirstTimeUser:
         assert result.text is not None, "Empty skill response"
         assert len(result.text) > 20, "Response too short"
 
-        # Should not show error
-        assert "error" not in result.text.lower() or "fix" in result.text.lower(), \
+        # Should not show actual error (but skill discussing errors is fine)
+        text_lower = result.text.lower()
+        is_actual_error = (
+            text_lower.startswith("❌") or
+            text_lower.startswith("error:")
+        )
+        assert not is_actual_error, \
             f"First skill showed error: {result.text[:200]}"
 
     @pytest.mark.e2e

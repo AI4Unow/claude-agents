@@ -136,10 +136,11 @@ async def _execute_loop(
             model=model,
         )
 
-        # Collect text content
-        for block in response.content:
-            if block.type == "text":
-                accumulated_text.append(block.text)
+        # Collect text content (guard against None response)
+        if response and response.content:
+            for block in response.content:
+                if hasattr(block, 'type') and block.type == "text" and hasattr(block, 'text'):
+                    accumulated_text.append(block.text)
 
         # Check if done
         if response.stop_reason == "end_turn":
@@ -156,8 +157,8 @@ async def _execute_loop(
 
             # Execute tools and collect results
             tool_results = []
-            for block in response.content:
-                if block.type == "tool_use":
+            for block in (response.content or []):
+                if hasattr(block, 'type') and block.type == "tool_use":
                     logger.info("tool_call", name=block.name, input=str(block.input)[:50])
 
                     # Report progress if callback provided

@@ -2,6 +2,8 @@
 import pytest
 from .conftest import send_and_wait
 
+pytestmark = pytest.mark.no_llm  # Infrastructure tests, no LLM required
+
 
 @pytest.mark.e2e
 @pytest.mark.asyncio

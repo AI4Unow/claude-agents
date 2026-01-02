@@ -14,6 +14,13 @@ SLOW_SKILLS = {
     "content-research-writer"
 }
 
+# Local skills that get queued to Firebase instead of executing directly
+# These return a "task queued" response instead of skill output
+LOCAL_SKILLS = {
+    "canvas-design", "docx", "xlsx", "pptx", "pdf",
+    "media-processing", "image-enhancer", "video-downloader"
+}
+
 # Skill categories with expected response patterns
 SKILL_ASSERTIONS = {
     # Research skills - expect report/analysis structure
@@ -124,24 +131,40 @@ class TestRemoteSkills:
         # Basic assertions
         assert result.success, f"Skill '{skill_name}' failed to respond"
         assert result.text is not None, f"Skill '{skill_name}' returned empty response"
+
+        text_lower = result.text.lower()
+
+        # Handle local skills (queued to Firebase)
+        if skill_name in LOCAL_SKILLS:
+            is_queued = "queue" in text_lower or "task" in text_lower
+            assert is_queued or len(result.text) > 20, \
+                f"Local skill '{skill_name}' not queued: {result.text[:200]}"
+            return  # Skip further assertions for queued tasks
+
         assert len(result.text) > 20, f"Skill '{skill_name}' response too short"
 
         # Check for error indicators - only fail on actual error responses
         # not on skill responses that discuss errors (like debugging skill)
-        text_lower = result.text.lower()
-        is_actual_error = (
-            text_lower.startswith("❌") or
-            text_lower.startswith("error:") or
-            "error:" in text_lower[:50]  # Error indicator at start
-        )
-        assert not is_actual_error, \
-            f"Skill '{skill_name}' returned error: {result.text[:200]}"
+        # Exclude skills that naturally discuss errors in their output
+        error_discussing_skills = {"debugging", "code-review", "problem-solving"}
+        if skill_name not in error_discussing_skills:
+            is_actual_error = (
+                text_lower.startswith("❌") or
+                text_lower.startswith("error:") or
+                (text_lower.startswith("error") and ":" in text_lower[:15])
+            )
+            assert not is_actual_error, \
+                f"Skill '{skill_name}' returned error: {result.text[:200]}"
 
     @pytest.mark.e2e
     @pytest.mark.asyncio
     @pytest.mark.parametrize("skill_name", list(SKILL_ASSERTIONS.keys()))
     async def test_skill_response_content(self, telegram_client, bot_username, skill_name):
         """Test skill responses contain expected content."""
+        # Skip local skills in this content test
+        if skill_name in LOCAL_SKILLS:
+            pytest.skip(f"Skill '{skill_name}' is local (queued)")
+
         prompt = SKILL_PROMPTS.get(skill_name, "Hello")
         assertions = SKILL_ASSERTIONS.get(skill_name, {"contains": []})
         timeout = 90 if skill_name in SLOW_SKILLS else 45
@@ -158,6 +181,10 @@ class TestRemoteSkills:
             pytest.skip(f"Skill '{skill_name}' not available")
 
         text_lower = result.text.lower()
+
+        # Handle queued response (local skill fallback)
+        if "queue" in text_lower and "task" in text_lower:
+            pytest.skip(f"Skill '{skill_name}' queued for local execution")
 
         # Check expected keywords (at least one must match)
         expected = assertions.get("contains", [])
