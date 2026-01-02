@@ -1,6 +1,8 @@
 """Telegram E2E test configuration using Telethon."""
 import os
 import asyncio
+import shutil
+import tempfile
 import pytest
 from pathlib import Path
 
@@ -18,6 +20,9 @@ import httpx
 # Session file location
 SESSION_DIR = Path(__file__).parent
 SESSION_NAME = "test_session"
+
+# Temp directory for session copies (avoids SQLite locking)
+_TEMP_SESSION_DIR: Optional[Path] = None
 
 # API base URL for state verification
 API_BASE_URL = os.environ.get(
@@ -121,19 +126,31 @@ async def telegram_client(e2e_env):
 
     Requires prior authentication via auth_session.py.
     The session file must exist and be valid.
+
+    Uses a copy of the session file in a temp directory to avoid
+    SQLite database locking issues when tests run concurrently.
     """
+    global _TEMP_SESSION_DIR
     from telethon import TelegramClient
 
-    # Use file session for persistence (without .session extension)
-    session_path = SESSION_DIR / SESSION_NAME
-
-    # Check session file exists
-    session_file = SESSION_DIR / f"{SESSION_NAME}.session"
-    if not session_file.exists():
+    # Check original session file exists
+    original_session_file = SESSION_DIR / f"{SESSION_NAME}.session"
+    if not original_session_file.exists():
         pytest.skip(
-            f"Session file not found: {session_file}\n"
+            f"Session file not found: {original_session_file}\n"
             "Run: python3 tests/e2e/auth_session.py"
         )
+
+    # Create temp directory for session copy
+    _TEMP_SESSION_DIR = Path(tempfile.mkdtemp(prefix="telethon_e2e_"))
+    temp_session_file = _TEMP_SESSION_DIR / f"{SESSION_NAME}.session"
+
+    # Copy session file to temp directory
+    shutil.copy2(original_session_file, temp_session_file)
+    print(f"[E2E] Using temp session: {temp_session_file}")
+
+    # Use temp session path (without .session extension)
+    session_path = _TEMP_SESSION_DIR / SESSION_NAME
 
     client = TelegramClient(
         str(session_path),
@@ -163,6 +180,14 @@ async def telegram_client(e2e_env):
 
     yield client
     await client.disconnect()
+
+    # Clean up temp session directory
+    if _TEMP_SESSION_DIR and _TEMP_SESSION_DIR.exists():
+        try:
+            shutil.rmtree(_TEMP_SESSION_DIR)
+            print(f"[E2E] Cleaned up temp session: {_TEMP_SESSION_DIR}")
+        except Exception as e:
+            print(f"[E2E] Failed to cleanup temp session: {e}")
 
 
 @pytest.fixture

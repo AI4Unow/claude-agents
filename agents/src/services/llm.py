@@ -210,7 +210,12 @@ class LLMClient:
             # Return full response if tools (for tool_use inspection), else just text
             if tools:
                 return response
-            return response.content[0].text
+            # Extract text from first text block (handle ToolUseBlock gracefully)
+            for block in response.content:
+                if hasattr(block, 'type') and block.type == 'text' and hasattr(block, 'text'):
+                    return block.text
+            # Fallback: return string representation if no text block found
+            return str(response.content[0]) if response.content else ""
 
         except Exception as e:
             error_str = str(e).lower()
@@ -234,7 +239,12 @@ class LLMClient:
 
                     if tools:
                         return response
-                    return response.content[0].text
+                    # Extract text from first text block (handle ToolUseBlock gracefully)
+                    for block in response.content:
+                        if hasattr(block, 'type') and block.type == 'text' and hasattr(block, 'text'):
+                            return block.text
+                    # Fallback: return string representation if no text block found
+                    return str(response.content[0]) if response.content else ""
                 except Exception as retry_error:
                     claude_circuit._record_failure(retry_error)
                     logger.error("llm_retry_failed", error=str(retry_error)[:100])

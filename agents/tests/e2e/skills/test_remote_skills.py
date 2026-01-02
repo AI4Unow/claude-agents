@@ -3,6 +3,8 @@
 import pytest
 from ..conftest import execute_skill, send_and_wait
 
+pytestmark = pytest.mark.requires_claude  # All tests in this module require Claude API
+
 # Skills that need longer timeout (90s instead of 45s)
 SLOW_SKILLS = {
     "planning", "research", "ai-multimodal", "content", "github",
@@ -124,9 +126,15 @@ class TestRemoteSkills:
         assert result.text is not None, f"Skill '{skill_name}' returned empty response"
         assert len(result.text) > 20, f"Skill '{skill_name}' response too short"
 
-        # Check for error indicators
+        # Check for error indicators - only fail on actual error responses
+        # not on skill responses that discuss errors (like debugging skill)
         text_lower = result.text.lower()
-        assert "error" not in text_lower or "fix" in text_lower, \
+        is_actual_error = (
+            text_lower.startswith("❌") or
+            text_lower.startswith("error:") or
+            "error:" in text_lower[:50]  # Error indicator at start
+        )
+        assert not is_actual_error, \
             f"Skill '{skill_name}' returned error: {result.text[:200]}"
 
     @pytest.mark.e2e
