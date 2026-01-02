@@ -3,6 +3,13 @@ import os
 import asyncio
 import pytest
 from pathlib import Path
+
+# Load .env file for local testing
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent.parent.parent / ".env")
+except ImportError:
+    pass  # python-dotenv not installed, env vars must be set manually
 from dataclasses import dataclass
 from typing import Optional, Any
 
@@ -28,6 +35,9 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "admin: admin-only tests")
     config.addinivalue_line("markers", "flaky: known flaky tests")
     config.addinivalue_line("markers", "timeout_90: tests with 90s timeout")
+    config.addinivalue_line("markers", "requires_claude: tests requiring Claude API (LLM)")
+    config.addinivalue_line("markers", "requires_gemini: tests requiring Gemini API")
+    config.addinivalue_line("markers", "no_llm: infrastructure tests (no LLM required)")
 
 
 # === Retry Logic ===
@@ -390,6 +400,278 @@ async def get_user_reports(user_id: int) -> list:
             return []
         except Exception:
             return []
+
+
+# === Webhook Health Check ===
+
+async def check_webhook_health() -> bool:
+    """Check Telegram webhook health via getWebhookInfo.
+
+    Returns:
+        True if webhook is healthy (pending_update_count < 10, no recent errors)
+        False if unhealthy
+    """
+    from telethon.sync import TelegramClient
+    from telethon.sessions import StringSession
+
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        print("[E2E] TELEGRAM_BOT_TOKEN not set, skipping webhook check")
+        return True
+
+    # Use bot token to check webhook info via Bot API
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(
+                f"https://api.telegram.org/bot{bot_token}/getWebhookInfo"
+            )
+            if resp.status_code != 200:
+                print(f"[E2E] Webhook info request failed: {resp.status_code}")
+                return False
+
+            data = resp.json()
+            if not data.get("ok"):
+                print(f"[E2E] Webhook info error: {data.get('description')}")
+                return False
+
+            info = data.get("result", {})
+            pending_count = info.get("pending_update_count", 0)
+            last_error = info.get("last_error_message")
+            last_error_date = info.get("last_error_date", 0)
+
+            # Check health criteria
+            if pending_count >= 10:
+                print(f"[E2E] Webhook unhealthy: {pending_count} pending updates")
+                return False
+
+            # Check if error happened in last 5 minutes
+            import time
+            if last_error and (time.time() - last_error_date) < 300:
+                print(f"[E2E] Webhook recent error: {last_error}")
+                return False
+
+            print(f"[E2E] Webhook healthy: {pending_count} pending updates")
+            return True
+
+        except Exception as e:
+            print(f"[E2E] Webhook health check error: {e}")
+            return False
+
+
+async def ensure_webhook_healthy(bot_token: str = None) -> bool:
+    """Ensure webhook is healthy, re-setup if needed.
+
+    Args:
+        bot_token: Telegram bot token (reads from env if not provided)
+
+    Returns:
+        True if webhook is healthy or successfully recovered
+        False if unable to recover after retries
+    """
+    if not bot_token:
+        bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+
+    if not bot_token:
+        print("[E2E] TELEGRAM_BOT_TOKEN not set, skipping webhook check")
+        return True
+
+    max_attempts = 2
+
+    for attempt in range(max_attempts):
+        # Check current health
+        is_healthy = await check_webhook_health()
+
+        if is_healthy:
+            return True
+
+        # Unhealthy - re-setup webhook
+        print(f"[E2E] Webhook unhealthy, attempting recovery (attempt {attempt + 1}/{max_attempts})")
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                # Drop pending updates by calling getUpdates with -1 offset
+                drop_resp = await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/getUpdates",
+                    json={"offset": -1, "timeout": 0}
+                )
+
+                if drop_resp.status_code == 200:
+                    print("[E2E] Dropped pending updates")
+                else:
+                    print(f"[E2E] Failed to drop updates: {drop_resp.status_code}")
+
+                # Re-set webhook (assume Modal webhook URL)
+                webhook_url = API_BASE_URL + "/webhook/telegram"
+                webhook_resp = await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/setWebhook",
+                    json={"url": webhook_url, "drop_pending_updates": True}
+                )
+
+                if webhook_resp.status_code == 200:
+                    print(f"[E2E] Webhook re-set to {webhook_url}")
+                    await asyncio.sleep(2)  # Wait for webhook to stabilize
+                else:
+                    print(f"[E2E] Failed to set webhook: {webhook_resp.status_code}")
+
+            except Exception as e:
+                print(f"[E2E] Webhook recovery error: {e}")
+
+        # Wait before retry
+        if attempt < max_attempts - 1:
+            await asyncio.sleep(3)
+
+    # Final check
+    return await check_webhook_health()
+
+
+@pytest.fixture(scope="session", autouse=True)
+async def webhook_health_check(event_loop):
+    """Ensure webhook is healthy before test session starts.
+
+    Runs automatically at session start. Checks webhook health
+    and attempts recovery if needed.
+    """
+    print("\n[E2E] Checking webhook health before test session...")
+
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        print("[E2E] TELEGRAM_BOT_TOKEN not set, skipping webhook health check")
+        return
+
+    # Ensure webhook is healthy
+    is_healthy = await ensure_webhook_healthy(bot_token)
+
+    if is_healthy:
+        print("[E2E] Webhook health check passed\n")
+    else:
+        print("[E2E] WARNING: Webhook may be unhealthy, tests may be unstable\n")
+
+
+# === Circuit Health Checks ===
+
+async def check_circuit_health() -> dict:
+    """Check circuit breaker health via /health endpoint.
+
+    Returns:
+        Dict mapping circuit names to their full info dicts (state, failures, etc)
+        Empty dict if health check fails
+    """
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(f"{API_BASE_URL}/health")
+            if resp.status_code != 200:
+                print(f"[E2E] Health endpoint returned {resp.status_code}")
+                return {}
+
+            data = resp.json()
+            circuits = data.get("circuits", {})
+
+            return circuits
+
+        except Exception as e:
+            print(f"[E2E] Circuit health check error: {e}")
+            return {}
+
+
+@pytest.fixture(scope="function")
+async def ensure_circuits_healthy(request):
+    """Check circuit health before running LLM-dependent tests.
+
+    Uses pytest.xfail() instead of skip to show expected failures
+    when circuits are unhealthy.
+
+    Scope: function (per test) to catch mid-run circuit opens
+    """
+    # Only check if test requires LLM
+    marker_names = [m.name for m in request.node.iter_markers()]
+
+    requires_claude = "requires_claude" in marker_names
+    requires_gemini = "requires_gemini" in marker_names
+    no_llm = "no_llm" in marker_names
+
+    # Skip check for infrastructure tests
+    if no_llm or (not requires_claude and not requires_gemini):
+        return
+
+    # Check circuit health
+    circuits = await check_circuit_health()
+
+    if not circuits:
+        print("[E2E] WARNING: Could not verify circuit health, proceeding anyway")
+        return
+
+    # Check Claude circuit if required
+    if requires_claude:
+        claude_info = circuits.get("claude_api", {})
+        claude_state = claude_info.get("state", "unknown")
+        if claude_state == "open":
+            pytest.xfail(
+                f"Claude API circuit is open (state={claude_state}, "
+                f"failures={claude_info.get('failures', 'unknown')})"
+            )
+        elif claude_state == "half_open":
+            print(f"[E2E] WARNING: Claude API circuit is half_open, tests may be flaky")
+
+    # Check Gemini circuit if required
+    if requires_gemini:
+        gemini_info = circuits.get("gemini_api", {})
+        gemini_state = gemini_info.get("state", "unknown")
+        if gemini_state == "open":
+            pytest.xfail(
+                f"Gemini API circuit is open (state={gemini_state}, "
+                f"failures={gemini_info.get('failures', 'unknown')})"
+            )
+        elif gemini_state == "half_open":
+            print(f"[E2E] WARNING: Gemini API circuit is half_open, tests may be flaky")
+
+
+@pytest.fixture(scope="function", autouse=True)
+async def skill_rate_limit(request):
+    """Add small delay between skill invocation tests to prevent rate limiting.
+
+    Applies automatically to tests in skills/ subdirectory.
+    """
+    yield
+
+    # Only apply delay after tests in skills/ directory
+    test_path = str(request.fspath)
+    if "/skills/" in test_path or "test_skill" in test_path:
+        await asyncio.sleep(0.3)  # 300ms between skill tests
+
+
+@pytest.fixture(scope="function", autouse=True)
+async def auto_circuit_check(request):
+    """Automatically check circuit health for LLM-dependent tests.
+
+    Auto-applies to tests with requires_claude or requires_gemini markers.
+    Uses xfail instead of skip to show expected failures.
+    """
+    marker_names = [m.name for m in request.node.iter_markers()]
+
+    requires_claude = "requires_claude" in marker_names
+    requires_gemini = "requires_gemini" in marker_names
+
+    if not requires_claude and not requires_gemini:
+        yield
+        return
+
+    # Check circuit health before test
+    circuits = await check_circuit_health()
+
+    if circuits:
+        # Check Claude circuit
+        if requires_claude:
+            claude_info = circuits.get("claude_api", {})
+            if claude_info.get("state") == "open":
+                pytest.xfail(f"Claude circuit open: {claude_info.get('failures', 0)} failures")
+
+        # Check Gemini circuit
+        if requires_gemini:
+            gemini_info = circuits.get("gemini_api", {})
+            if gemini_info.get("state") == "open":
+                pytest.xfail(f"Gemini circuit open: {gemini_info.get('failures', 0)} failures")
+
+    yield
 
 
 # === Button Interaction Helper ===

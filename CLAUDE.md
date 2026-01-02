@@ -31,9 +31,9 @@ See [docs/project-overview-pdr.md](docs/project-overview-pdr.md) for full requir
 | Purpose | Model |
 |---------|-------|
 | Complex/Agentic | `gemini-claude-opus-4-5-thinking` |
-| Simple/Fast | `gemini-3-flash-preview` |
-| Fallback Complex | `kiro-claude-opus-4-5-agentic` |
-| Fallback Simple | `kiro-claude-haiku-4-5` |
+| Simple/Fast | `gemini-2.5-flash-lite` |
+| Fallback Complex | `gemini-claude-opus-4-5-thinking` |
+| Fallback Simple | `gemini-2.5-flash-lite` |
 
 Configuration centralized in `agents/src/config/models.py`. Override via `ANTHROPIC_MODEL` and `ANTHROPIC_MODEL_FAST` env vars.
 

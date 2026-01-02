@@ -9,14 +9,14 @@ import os
 # =============================================================================
 # Primary Models (gemini-claude family)
 # =============================================================================
-MODEL_COMPLEX = "gemini-claude-opus-4-5-thinking"  # Complex/agentic tasks
-MODEL_SIMPLE = "gemini-3-flash-preview"            # Simple/fast tasks
+MODEL_COMPLEX = "gemini-3-flash-preview"           # Complex/agentic tasks
+MODEL_SIMPLE = "gemini-2.5-flash-lite"             # Simple/fast tasks
 
 # =============================================================================
 # Fallback Models (same as primary - gemini-claude family)
 # =============================================================================
-FALLBACK_COMPLEX = "gemini-claude-opus-4-5-thinking"
-FALLBACK_SIMPLE = "gemini-3-flash-preview"
+FALLBACK_COMPLEX = "gemini-3-flash-preview"
+FALLBACK_SIMPLE = "gemini-2.5-flash-lite"
 
 # =============================================================================
 # Environment Variable Overrides
