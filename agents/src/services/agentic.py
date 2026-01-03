@@ -141,14 +141,19 @@ async def _execute_loop(
             for block in response.content:
                 if hasattr(block, 'type') and block.type == "text" and hasattr(block, 'text'):
                     accumulated_text.append(block.text)
+        elif not response or not response.content:
+            # Empty response - log warning and break to avoid infinite loop
+            logger.warning("agentic_empty_response", iteration=iterations)
+            accumulated_text.append("⚠️ Received empty response from LLM")
+            break
 
         # Check if done
-        if response.stop_reason == "end_turn":
+        if response and response.stop_reason == "end_turn":
             logger.info("agentic_complete", iterations=iterations)
             break
 
         # Process tool calls
-        if response.stop_reason == "tool_use":
+        if response and response.stop_reason == "tool_use":
             # Append assistant response to history
             messages.append({
                 "role": "assistant",

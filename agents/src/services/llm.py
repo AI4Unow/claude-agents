@@ -203,19 +203,24 @@ class LLMClient:
             claude_circuit._record_success()
             logger.info("llm_success", model=effective_model)
 
-            # Log quality metrics
-            response_text = response.content[0].text if hasattr(response.content[0], 'text') else str(response.content[0])
-            self._log_quality_metrics(response_text, effective_model)
+            # Log quality metrics (guard against empty response)
+            if response and response.content:
+                response_text = response.content[0].text if hasattr(response.content[0], 'text') else str(response.content[0])
+                self._log_quality_metrics(response_text, effective_model)
+            else:
+                logger.warning("llm_empty_response", model=effective_model)
 
             # Return full response if tools (for tool_use inspection), else just text
             if tools:
                 return response
             # Extract text from first text block (handle ToolUseBlock gracefully)
-            for block in response.content:
-                if hasattr(block, 'type') and block.type == 'text' and hasattr(block, 'text'):
-                    return block.text
-            # Fallback: return string representation if no text block found
-            return str(response.content[0]) if response.content else ""
+            if response and response.content:
+                for block in response.content:
+                    if hasattr(block, 'type') and block.type == 'text' and hasattr(block, 'text'):
+                        return block.text
+                # Fallback: return string representation if no text block found
+                return str(response.content[0])
+            return ""
 
         except Exception as e:
             error_str = str(e).lower()
@@ -233,18 +238,23 @@ class LLMClient:
                     claude_circuit._record_success()
                     logger.info("llm_retry_success", model=effective_model)
 
-                    # Log quality metrics for retry
-                    response_text = response.content[0].text if hasattr(response.content[0], 'text') else str(response.content[0])
-                    self._log_quality_metrics(response_text, effective_model)
+                    # Log quality metrics for retry (guard against empty response)
+                    if response and response.content:
+                        response_text = response.content[0].text if hasattr(response.content[0], 'text') else str(response.content[0])
+                        self._log_quality_metrics(response_text, effective_model)
+                    else:
+                        logger.warning("llm_empty_response_retry", model=effective_model)
 
                     if tools:
                         return response
                     # Extract text from first text block (handle ToolUseBlock gracefully)
-                    for block in response.content:
-                        if hasattr(block, 'type') and block.type == 'text' and hasattr(block, 'text'):
-                            return block.text
-                    # Fallback: return string representation if no text block found
-                    return str(response.content[0]) if response.content else ""
+                    if response and response.content:
+                        for block in response.content:
+                            if hasattr(block, 'type') and block.type == 'text' and hasattr(block, 'text'):
+                                return block.text
+                        # Fallback: return string representation if no text block found
+                        return str(response.content[0])
+                    return ""
                 except Exception as retry_error:
                     claude_circuit._record_failure(retry_error)
                     logger.error("llm_retry_failed", error=str(retry_error)[:100])
@@ -304,11 +314,13 @@ class LLMClient:
             )
             claude_circuit._record_success()
             logger.info("vision_success", model=model)
-            # Extract text from first text block (handle ToolUseBlock gracefully)
-            for block in response.content:
-                if hasattr(block, 'type') and block.type == 'text' and hasattr(block, 'text'):
-                    return block.text
-            return str(response.content[0]) if response.content else ""
+            # Extract text from first text block (guard against empty response)
+            if response and response.content:
+                for block in response.content:
+                    if hasattr(block, 'type') and block.type == 'text' and hasattr(block, 'text'):
+                        return block.text
+                return str(response.content[0])
+            return ""
 
         except Exception as e:
             claude_circuit._record_failure(e)

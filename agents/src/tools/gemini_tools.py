@@ -45,9 +45,16 @@ async def execute_deep_research(
             if c.get('url')
         ])
 
+        # Guard against empty sections - fallback to summary
+        report_content = (
+            report.sections[0]["content"]
+            if report.sections and report.sections[0].get("content")
+            else report.summary or "No content available"
+        )
+
         result = {
             "success": True,
-            "report": report.sections[0]["content"],
+            "report": report_content,
             "summary": report.summary,
             "citations": citations_md,
             "query_count": report.query_count,
@@ -63,7 +70,7 @@ async def execute_deep_research(
                 url = await fb_save_report(
                     user_id=user_id,
                     report_id=report_id,
-                    content=report.sections[0]["content"],
+                    content=report_content,
                     metadata={
                         "title": f"Research: {query[:50]}",
                         "query": query,
