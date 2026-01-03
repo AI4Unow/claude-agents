@@ -15,6 +15,21 @@ T = TypeVar('T')
 CIRCUIT_OPEN = object()
 
 
+def _is_auth_error(e: Exception) -> bool:
+    """Check if exception is an auth or permission error.
+
+    These errors are usually configuration or user-related,
+    not infrastructure failures, so they shouldn't trip the circuit.
+    """
+    error_str = str(e).lower()
+    # Check for HTTP codes or common error messages
+    if any(code in error_str for code in ["401", "403"]):
+        return True
+    if any(msg in error_str for msg in ["unauthorized", "forbidden", "permission_denied", "permission denied"]):
+        return True
+    return False
+
+
 def with_firebase_circuit(
     operation: str = None,
     open_return: Any = None,
@@ -56,7 +71,10 @@ def with_firebase_circuit(
                 firebase_circuit._record_success()
                 return result
             except Exception as e:
-                firebase_circuit._record_failure(e)
+                # Record failure only for transient/infrastructure errors
+                if not _is_auth_error(e):
+                    firebase_circuit._record_failure(e)
+
                 logger.error(
                     f"firebase_{op_name}_error",
                     error=str(e)[:100],

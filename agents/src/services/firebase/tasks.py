@@ -9,6 +9,9 @@ from google.cloud.firestore_v1 import FieldFilter
 
 from ._client import get_db, Collections
 from ._circuit import with_firebase_circuit
+from src.utils.logging import get_logger
+
+logger = get_logger()
 
 
 async def create_task(
@@ -70,21 +73,51 @@ async def claim_task(task_type: str, agent_id: str) -> Optional[Dict]:
     return result
 
 
-async def complete_task(task_id: str, result: Dict) -> None:
+@with_firebase_circuit(open_return=None)
+async def complete_task(task_id: str, result: Dict) -> bool:
     """Mark task as completed with result."""
     db = get_db()
-    db.collection(Collections.TASKS).document(task_id).update({
-        "status": "done",
-        "result": result,
-        "updatedAt": firestore.SERVER_TIMESTAMP
-    })
+    task_ref = db.collection(Collections.TASKS).document(task_id)
+
+    @firestore.transactional
+    def complete_in_transaction(transaction, task_ref):
+        snapshot = task_ref.get(transaction=transaction)
+        if not snapshot.exists:
+            return False
+        if snapshot.get("status") != "processing":
+            logger.warning("task_completion_invalid_status", task_id=task_id, current_status=snapshot.get("status"))
+            return False
+        transaction.update(task_ref, {
+            "status": "done",
+            "result": result,
+            "updatedAt": firestore.SERVER_TIMESTAMP
+        })
+        return True
+
+    transaction = db.transaction()
+    return complete_in_transaction(transaction, task_ref)
 
 
-async def fail_task(task_id: str, error: str) -> None:
+@with_firebase_circuit(open_return=None)
+async def fail_task(task_id: str, error: str) -> bool:
     """Mark task as failed with error."""
     db = get_db()
-    db.collection(Collections.TASKS).document(task_id).update({
-        "status": "failed",
-        "error": error,
-        "updatedAt": firestore.SERVER_TIMESTAMP
-    })
+    task_ref = db.collection(Collections.TASKS).document(task_id)
+
+    @firestore.transactional
+    def fail_in_transaction(transaction, task_ref):
+        snapshot = task_ref.get(transaction=transaction)
+        if not snapshot.exists:
+            return False
+        if snapshot.get("status") != "processing":
+            logger.warning("task_failure_invalid_status", task_id=task_id, current_status=snapshot.get("status"))
+            return False
+        transaction.update(task_ref, {
+            "status": "failed",
+            "error": error,
+            "updatedAt": firestore.SERVER_TIMESTAMP
+        })
+        return True
+
+    transaction = db.transaction()
+    return fail_in_transaction(transaction, task_ref)

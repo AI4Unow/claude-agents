@@ -66,6 +66,10 @@ async def create_local_task(
 async def get_pending_local_tasks(limit: int = 10) -> List[Dict]:
     """Get pending local tasks for processing.
 
+    Also cleans up stale tasks:
+    - pending > 1 hour -> failed
+    - processing > 15 minutes -> failed
+
     Args:
         limit: Maximum number of tasks to return
 
@@ -73,6 +77,44 @@ async def get_pending_local_tasks(limit: int = 10) -> List[Dict]:
         List of task dicts with 'id' field
     """
     db = get_db()
+    now = datetime.utcnow()
+
+    # 1. Cleanup stale tasks
+    # Pending > 1 hour
+    stale_pending_cutoff = now - timedelta(hours=1)
+    stale_pending = (
+        db.collection(Collections.TASK_QUEUE)
+        .where(filter=FieldFilter("status", "==", "pending"))
+        .where(filter=FieldFilter("created_at", "<", stale_pending_cutoff))
+        .limit(10)
+        .stream()
+    )
+    for doc in stale_pending:
+        doc.reference.update({
+            "status": "failed",
+            "error": "Task timed out in pending status (>1h)",
+            "updated_at": firestore.SERVER_TIMESTAMP
+        })
+        logger.warning("local_task_stale_pending_failed", task_id=doc.id)
+
+    # Processing > 15 minutes
+    stale_processing_cutoff = now - timedelta(minutes=15)
+    stale_processing = (
+        db.collection(Collections.TASK_QUEUE)
+        .where(filter=FieldFilter("status", "==", "processing"))
+        .where(filter=FieldFilter("updated_at", "<", stale_processing_cutoff))
+        .limit(10)
+        .stream()
+    )
+    for doc in stale_processing:
+        doc.reference.update({
+            "status": "failed",
+            "error": "Task timed out in processing status (>15m)",
+            "updated_at": firestore.SERVER_TIMESTAMP
+        })
+        logger.warning("local_task_stale_processing_failed", task_id=doc.id)
+
+    # 2. Get pending tasks
     query = (
         db.collection(Collections.TASK_QUEUE)
         .where(filter=FieldFilter("status", "==", "pending"))
@@ -126,7 +168,7 @@ async def complete_local_task(
     result: str,
     success: bool = True,
     error: str = None
-) -> None:
+) -> bool:
     """Mark task as completed or failed.
 
     Args:
@@ -134,25 +176,45 @@ async def complete_local_task(
         result: Execution result (if success)
         success: True for completed, False for failed
         error: Error message (if failed)
+
+    Returns:
+        True if updated successfully, False if status was not processing
     """
     db = get_db()
-    update_data = {
-        "status": "completed" if success else "failed",
-        "completed_at": firestore.SERVER_TIMESTAMP,
-        "updated_at": firestore.SERVER_TIMESTAMP
-    }
+    task_ref = db.collection(Collections.TASK_QUEUE).document(task_id)
 
-    if success:
-        update_data["result"] = result
-    else:
-        update_data["error"] = error
+    @firestore.transactional
+    def complete_in_transaction(transaction, task_ref):
+        snapshot = task_ref.get(transaction=transaction)
+        if not snapshot.exists:
+            return False
+        if snapshot.get("status") != "processing":
+            logger.warning("local_task_completion_invalid_status", task_id=task_id, current_status=snapshot.get("status"))
+            return False
 
-    db.collection(Collections.TASK_QUEUE).document(task_id).update(update_data)
+        update_data = {
+            "status": "completed" if success else "failed",
+            "completed_at": firestore.SERVER_TIMESTAMP,
+            "updated_at": firestore.SERVER_TIMESTAMP
+        }
 
-    logger.info(
-        "local_task_completed" if success else "local_task_failed",
-        task_id=task_id
-    )
+        if success:
+            update_data["result"] = result
+        else:
+            update_data["error"] = error
+
+        transaction.update(task_ref, update_data)
+        return True
+
+    transaction = db.transaction()
+    updated = complete_in_transaction(transaction, task_ref)
+
+    if updated:
+        logger.info(
+            "local_task_completed" if success else "local_task_failed",
+            task_id=task_id
+        )
+    return updated
 
 
 async def increment_retry_count(task_id: str) -> int:

@@ -185,6 +185,26 @@ class TestWithFirebaseCircuit:
         mock_circuit._record_success.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_auth_error_does_not_record_failure(self):
+        """Auth/permission errors are not recorded as circuit failures."""
+        from src.services.firebase._circuit import with_firebase_circuit
+
+        mock_circuit = MagicMock()
+        mock_circuit.state = CircuitState.CLOSED
+        mock_circuit._record_failure = MagicMock()
+
+        @with_firebase_circuit(open_return=None)
+        async def auth_failing_func():
+            raise Exception("403: Permission Denied")
+
+        with patch("src.services.firebase._circuit.firebase_circuit", mock_circuit):
+            with pytest.raises(Exception) as excinfo:
+                await auth_failing_func()
+            assert "403" in str(excinfo.value)
+
+        mock_circuit._record_failure.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_preserves_function_metadata(self):
         """Decorator preserves function name and docstring."""
         from src.services.firebase._circuit import with_firebase_circuit

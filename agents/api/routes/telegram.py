@@ -4,10 +4,17 @@ Handles incoming Telegram bot updates including messages, callbacks, and media.
 """
 from fastapi import APIRouter, Request, HTTPException
 import structlog
+import time
+from typing import Dict
 
 
 router = APIRouter(prefix="/webhook", tags=["telegram"])
 logger = structlog.get_logger()
+
+
+# Module-level deduplication cache
+_processed_updates: Dict[int, float] = {}
+DEDUPLICATION_TTL = 60
 
 
 @router.post("/telegram")
@@ -50,7 +57,25 @@ async def telegram_webhook(request: Request):
 
     try:
         update = await request.json()
-        logger.info("telegram_update", update_id=update.get("update_id"))
+        update_id = update.get("update_id")
+
+        if update_id:
+            now = time.time()
+            # Clean old entries (periodically or every request)
+            if len(_processed_updates) > 1000: # Simple cap to prevent memory leak
+                expired = [uid for uid, ts in _processed_updates.items() if now - ts > DEDUPLICATION_TTL]
+                for uid in expired:
+                    _processed_updates.pop(uid, None)
+
+            # Check for duplicate
+            if update_id in _processed_updates:
+                if now - _processed_updates[update_id] < DEDUPLICATION_TTL:
+                    logger.info("telegram_duplicate_update", update_id=update_id)
+                    return {"ok": True}
+
+            _processed_updates[update_id] = now
+
+        logger.info("telegram_update", update_id=update_id)
 
         # Check for callback query (button press)
         callback = update.get("callback_query")
@@ -114,7 +139,29 @@ async def telegram_webhook(request: Request):
         if text.startswith("/"):
             response = await command_router.handle(text, user_data, chat_id)
         else:
-            response = await process_message(text, user_data, chat_id, message_id)
+            # Use SDK handler for message processing (new path)
+            # Fallback to old process_message if SDK fails
+            try:
+                from src.sdk.telegram_handler import handle_telegram_message
+                from src.core.state import get_state_manager
+                
+                state = get_state_manager()
+                tier = await state.get_user_tier_cached(user_data.get("id"))
+                
+                response = await handle_telegram_message(
+                    user_id=user_data.get("id"),
+                    message=text,
+                    tier=tier,
+                    context={
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "platform": "telegram"
+                    }
+                )
+            except Exception as sdk_error:
+                # Fallback to old implementation
+                logger.warning("sdk_handler_fallback", error=str(sdk_error)[:100])
+                response = await process_message(text, user_data, chat_id, message_id)
 
         # Response may be None if already sent (e.g., keyboard)
         if response:

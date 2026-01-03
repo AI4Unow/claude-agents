@@ -28,6 +28,9 @@ TIER_TIMEOUT_SECONDS = {
 }
 DEFAULT_TIMEOUT = 300  # 5 minute default
 
+# Conversation context limits
+MAX_CONTEXT_MESSAGES = 20  # Keep last 20 messages for context
+
 
 async def run_agentic_loop(
     user_message: str,
@@ -96,7 +99,12 @@ async def _execute_loop(
 
     if user_id:
         messages = await state.get_conversation(user_id)
-        logger.info("conversation_loaded", user_id=user_id, count=len(messages))
+        # Truncate to keep last MAX_CONTEXT_MESSAGES
+        if len(messages) > MAX_CONTEXT_MESSAGES:
+            messages = messages[-MAX_CONTEXT_MESSAGES:]
+            logger.info("conversation_truncated", user_id=user_id, count=len(messages))
+        else:
+            logger.info("conversation_loaded", user_id=user_id, count=len(messages))
 
     messages.append({"role": "user", "content": user_message})
 
