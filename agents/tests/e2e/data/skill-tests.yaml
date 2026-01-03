@@ -1,0 +1,509 @@
+# Skill Test Definitions
+# YAML-based test data for dynamic skill testing
+# Supports inheritance from defaults and category_defaults
+
+defaults:
+  timeout: 45
+  markers: [e2e, requires_claude]
+  assertions:
+    min_length: 50
+    error_patterns: ["❌", "error:", "failed", "circuit opened"]
+
+category_defaults:
+  research:
+    timeout: 90
+    markers: [e2e, slow, requires_claude]
+    assertions:
+      patterns: [research, report, finding, analysis, result]
+
+  design:
+    timeout: 60
+    markers: [e2e, requires_claude]
+    assertions:
+      patterns: [design, ui, component, layout, style, interface]
+
+  development:
+    timeout: 60
+    markers: [e2e, requires_claude]
+    assertions:
+      patterns: [code, function, implement, api, endpoint]
+
+  content:
+    timeout: 90
+    markers: [e2e, slow, requires_claude]
+    assertions:
+      patterns: [content, write, article, text, copy]
+
+  local:
+    timeout: 60
+    markers: [e2e, local]
+    is_local: true
+    assertions:
+      patterns: [queue, task, pending]
+
+skills:
+  # === Research & Planning ===
+  planning:
+    prompt: "Create a simple hello world feature"
+    timeout: 90
+    category: research
+    assertions:
+      patterns: [plan, step, implement, phase, task, approach]
+      min_length: 100
+
+  debugging:
+    prompt: "Debug a null pointer exception"
+    category: development
+    assertions:
+      patterns: [debug, issue, fix, error, trace, problem]
+
+  research:
+    prompt: "Research Python async best practices"
+    timeout: 90
+    category: research
+    assertions:
+      patterns: [research, find, result, information, search, discovered]
+
+  code-review:
+    prompt: "Review this code: def foo(): pass"
+    category: development
+    assertions:
+      patterns: [review, code, suggest, improve, quality, issue]
+
+  # === Development ===
+  backend-development:
+    prompt: "Create a simple REST endpoint"
+    category: development
+    assertions:
+      patterns: [api, endpoint, database, server, route, http]
+
+  frontend-development:
+    prompt: "Create a button component"
+    category: development
+    assertions:
+      patterns: [component, ui, react, button, render, jsx]
+
+  mobile-development:
+    prompt: "Create a login screen"
+    category: development
+    assertions:
+      patterns: [app, mobile, screen, ios, android, react native, flutter, navigation, component]
+
+  # === Design ===
+  ui-ux-pro-max:
+    prompt: "Design a login form"
+    timeout: 90
+    category: design
+    assertions:
+      patterns: [design, ui, component, user, interface, layout, form]
+
+  ui-styling:
+    prompt: "Create a modern button style"
+    timeout: 90
+    category: design
+    assertions:
+      patterns: [style, css, color, tailwind, theme, class]
+
+  frontend-design-pro:
+    prompt: "Design a dashboard layout"
+    timeout: 90
+    category: design
+    assertions:
+      patterns: [design, layout, interface, visual, component, ui, animation, style]
+
+  frontend-design:
+    prompt: "Create a landing page design"
+    timeout: 90
+    category: design
+    assertions:
+      patterns: [design, page, layout, hero, section]
+
+  # === AI & Multimodal ===
+  ai-multimodal:
+    prompt: "Describe what AI can do"
+    timeout: 90
+    category: research
+    assertions:
+      patterns: [image, vision, analyze, ai, model, multimodal]
+
+  ai-artist:
+    prompt: "Create a concept for a landscape"
+    category: design
+    assertions:
+      patterns: [create, generate, art, image, visual, concept]
+
+  gemini-grounding:
+    prompt: "What is the current weather API?"
+    timeout: 60
+    markers: [e2e, requires_gemini]
+    assertions:
+      patterns: [search, ground, fact, source, information]
+
+  gemini-thinking:
+    prompt: "Think through a sorting algorithm"
+    timeout: 60
+    markers: [e2e, requires_gemini]
+    assertions:
+      patterns: [think, reason, analyze, step, logic]
+
+  gemini-deep-research:
+    prompt: "Research AI agent frameworks in 2026"
+    timeout: 120
+    markers: [e2e, slow, requires_gemini]
+    assertions:
+      patterns: [research, report, finding, framework, analysis]
+      min_length: 200
+
+  gemini-vision:
+    prompt: "What can you see in images?"
+    timeout: 90
+    markers: [e2e, slow, requires_gemini]
+    assertions:
+      patterns: [image, vision, analyze, see, describe]
+
+  # === Content ===
+  content:
+    prompt: "Write a short product description"
+    timeout: 90
+    category: content
+    assertions:
+      patterns: [content, write, create, text, copy, description]
+
+  content-research-writer:
+    prompt: "Research and write about AI trends"
+    timeout: 90
+    category: content
+    assertions:
+      patterns: [research, write, article, content, topic, trend]
+
+  # === Data ===
+  data:
+    prompt: "Analyze sales data patterns"
+    category: development
+    assertions:
+      patterns: [data, analyze, report, insight, metric, pattern]
+
+  databases:
+    prompt: "Design a user table schema"
+    category: development
+    assertions:
+      patterns: [database, query, schema, table, sql, column]
+
+  # === Integration ===
+  github:
+    prompt: "List common GitHub actions"
+    timeout: 90
+    category: development
+    assertions:
+      patterns: [github, repo, issue, repository, commit, action]
+
+  telegram-chat:
+    prompt: "What are Telegram bot capabilities?"
+    timeout: 90
+    category: development
+    assertions:
+      patterns: [telegram, chat, message, bot, send, capability]
+
+  shopify:
+    prompt: "How to create a Shopify product?"
+    category: development
+    assertions:
+      patterns: [shopify, store, product, ecommerce, api]
+
+  payment-integration:
+    prompt: "Explain Stripe checkout flow"
+    category: development
+    assertions:
+      patterns: [payment, stripe, checkout, transaction, api]
+
+  # === DevOps ===
+  devops:
+    prompt: "How to deploy a Python app?"
+    timeout: 90
+    category: development
+    assertions:
+      patterns: [deploy, docker, cloud, container, kubernetes]
+
+  firebase-automation:
+    prompt: "How to setup Firestore rules?"
+    timeout: 90
+    category: development
+    assertions:
+      patterns: [firebase, firestore, auth, database, rule]
+
+  # === Cognitive ===
+  problem-solving:
+    prompt: "Solve the FizzBuzz problem"
+    timeout: 90
+    category: research
+    assertions:
+      patterns: [problem, solution, approach, solve, step]
+
+  sequential-thinking:
+    prompt: "Think through a maze algorithm"
+    timeout: 90
+    category: research
+    assertions:
+      patterns: [step, think, reason, sequence, process]
+
+  # === Meta Skills ===
+  skill-creator:
+    prompt: "How to create a new skill?"
+    timeout: 90
+    assertions:
+      patterns: [skill, create, template, define, frontmatter]
+
+  mcp-management:
+    prompt: "List available MCP servers"
+    timeout: 90
+    assertions:
+      patterns: [mcp, server, tool, protocol, resource]
+
+  internal-comms:
+    prompt: "Write a project status update"
+    timeout: 90
+    category: content
+    assertions:
+      patterns: [communication, update, report, status, project]
+
+  worktree-manager:
+    prompt: "How to create a git worktree?"
+    timeout: 90
+    assertions:
+      patterns: [worktree, branch, git, parallel, create]
+
+  # === Hybrid Skills ===
+  better-auth:
+    prompt: "Explain OAuth2 authentication flow"
+    category: development
+    assertions:
+      patterns: [auth, oauth, token, session, login]
+
+  chrome-devtools:
+    prompt: "How to debug JavaScript in Chrome?"
+    category: development
+    assertions:
+      patterns: [chrome, devtools, debug, console, network]
+
+  mcp-builder:
+    prompt: "How to create an MCP server?"
+    assertions:
+      patterns: [mcp, server, build, protocol, tool]
+
+  repomix:
+    prompt: "How to use repomix for code context?"
+    assertions:
+      patterns: [repomix, code, context, repository, generate]
+
+  web-frameworks:
+    prompt: "Compare React vs Vue frameworks"
+    category: development
+    assertions:
+      patterns: [react, vue, framework, component, frontend]
+
+  webapp-testing:
+    prompt: "How to test a web application?"
+    category: development
+    assertions:
+      patterns: [test, e2e, unit, playwright, cypress]
+
+  # === Local Skills (queued to Firebase) ===
+  canvas-design:
+    prompt: "Create a poster"
+    is_local: true
+    timeout: 60
+    markers: [e2e, local]
+    assertions:
+      patterns: [queue, task, canvas, pending]
+
+  pdf:
+    prompt: "Extract text from PDF"
+    is_local: true
+    timeout: 60
+    markers: [e2e, local]
+    assertions:
+      patterns: [queue, task, pdf, pending]
+
+  docx:
+    prompt: "Create a Word document"
+    is_local: true
+    timeout: 60
+    markers: [e2e, local]
+    assertions:
+      patterns: [queue, task, docx, pending]
+
+  xlsx:
+    prompt: "Create an Excel spreadsheet"
+    is_local: true
+    timeout: 60
+    markers: [e2e, local]
+    assertions:
+      patterns: [queue, task, xlsx, pending]
+
+  pptx:
+    prompt: "Create a PowerPoint presentation"
+    is_local: true
+    timeout: 60
+    markers: [e2e, local]
+    assertions:
+      patterns: [queue, task, pptx, pending]
+
+  media-processing:
+    prompt: "Process a video file"
+    is_local: true
+    timeout: 60
+    markers: [e2e, local]
+    assertions:
+      patterns: [queue, task, media, pending]
+
+  image-enhancer:
+    prompt: "Enhance an image"
+    is_local: true
+    timeout: 60
+    markers: [e2e, local]
+    assertions:
+      patterns: [queue, task, image, pending]
+
+  video-downloader:
+    prompt: "Download a video"
+    is_local: true
+    timeout: 60
+    markers: [e2e, local]
+    assertions:
+      patterns: [queue, task, video, pending]
+
+  # === Additional Skills for Coverage ===
+  # Marketing & Business
+  ads-management:
+    prompt: "Create a Facebook ad campaign"
+    category: content
+    assertions:
+      patterns: [ad, campaign, facebook, marketing, budget]
+
+  affiliate-marketing:
+    prompt: "How to set up affiliate links?"
+    category: content
+    assertions:
+      patterns: [affiliate, link, commission, marketing]
+
+  analytics:
+    prompt: "Analyze website traffic data"
+    category: development
+    assertions:
+      patterns: [analytics, traffic, metrics, data, report]
+
+  brand-guidelines:
+    prompt: "Create brand style guide"
+    category: design
+    assertions:
+      patterns: [brand, style, color, font, guideline]
+
+  campaign-management:
+    prompt: "Plan a marketing campaign"
+    category: content
+    assertions:
+      patterns: [campaign, marketing, plan, target, audience]
+
+  competitive-ads-extractor:
+    prompt: "Analyze competitor ads"
+    category: content
+    assertions:
+      patterns: [competitor, ads, analyze, market]
+
+  copywriting:
+    prompt: "Write compelling ad copy"
+    category: content
+    assertions:
+      patterns: [copy, write, headline, cta, engage]
+
+  # Creative & Design
+  creativity:
+    prompt: "Generate creative ideas for a product"
+    category: design
+    assertions:
+      patterns: [creative, idea, concept, brainstorm]
+
+  brainstorming:
+    prompt: "Brainstorm solutions for user engagement"
+    category: research
+    assertions:
+      patterns: [brainstorm, idea, solution, concept]
+
+  artifacts-builder:
+    prompt: "Create an interactive component"
+    category: design
+    assertions:
+      patterns: [artifact, component, build, interactive]
+
+  assets-organizing:
+    prompt: "Organize design assets"
+    category: design
+    assertions:
+      patterns: [asset, organize, folder, structure]
+
+  # Documentation & Knowledge
+  changelog-generator:
+    prompt: "Generate changelog from commits"
+    category: development
+    assertions:
+      patterns: [changelog, commit, version, release]
+
+  context-engineering:
+    prompt: "Create optimal context for LLM"
+    category: development
+    assertions:
+      patterns: [context, llm, prompt, token]
+
+  content-hub:
+    prompt: "Organize content repository"
+    category: content
+    assertions:
+      patterns: [content, hub, organize, repository]
+
+  content-marketing:
+    prompt: "Create content marketing plan"
+    category: content
+    assertions:
+      patterns: [content, marketing, plan, audience]
+
+  # Development Extras
+  claude-code:
+    prompt: "How to use Claude Code CLI?"
+    category: development
+    assertions:
+      patterns: [claude, code, cli, command, hook]
+
+  mermaidjs-v11:
+    prompt: "Create a flowchart diagram"
+    category: development
+    assertions:
+      patterns: [mermaid, diagram, flowchart, node]
+
+  domain-name-brainstormer:
+    prompt: "Suggest domain names for a tech startup"
+    category: content
+    assertions:
+      patterns: [domain, name, available, suggestion]
+
+  raffle-winner-picker:
+    prompt: "Pick random winners from a list"
+    category: development
+    assertions:
+      patterns: [random, winner, pick, list]
+
+  theme-factory:
+    prompt: "Apply a theme to this document"
+    category: design
+    assertions:
+      patterns: [theme, style, apply, color]
+
+  skill-share:
+    prompt: "Share a skill with the team"
+    assertions:
+      patterns: [skill, share, slack, team]
+
+  developer-growth-analysis:
+    prompt: "Analyze my coding patterns"
+    category: development
+    assertions:
+      patterns: [analysis, pattern, growth, skill]

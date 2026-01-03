@@ -1,14 +1,57 @@
 # agents/tests/e2e/skills/test_slow_skills.py
-"""E2E tests for slow skills (> 30s execution time)."""
+"""E2E tests for slow skills (>30s execution time).
+
+Uses dynamic skill discovery and YAML test data.
+"""
 import pytest
 from ..conftest import execute_skill, get_user_reports
 
-# Module-level marker for Claude (used by most skills here)
+from .skill_loader import get_skill_names_by_marker, get_skill_timeout
+from .test_data_loader import TestDataLoader
+from .assertions import SkillAssertionChecker
+
+# Initialize shared instances
+loader = TestDataLoader()
+checker = SkillAssertionChecker(use_llm=False)
+
+# Module-level marker for Claude
 pytestmark = pytest.mark.requires_claude
 
 
 class TestSlowSkills:
     """Tests for slow-running skills. Run with: pytest -m slow"""
+
+    @pytest.mark.e2e
+    @pytest.mark.slow
+    @pytest.mark.asyncio
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("skill_name", get_skill_names_by_marker("slow"))
+    async def test_slow_skill_responds(self, telegram_client, bot_username, skill_name):
+        """Test each slow skill can complete within extended timeout."""
+        test_data = loader.get(skill_name)
+        timeout = test_data.timeout if test_data else 90
+        prompt = test_data.prompt if test_data else "Hello"
+
+        result = await execute_skill(
+            telegram_client,
+            bot_username,
+            skill_name,
+            prompt,
+            timeout=timeout
+        )
+
+        assert result.success, f"Slow skill '{skill_name}' failed to respond"
+        assert result.text is not None, f"Slow skill '{skill_name}' returned None"
+        assert len(result.text) > 50, f"Slow skill '{skill_name}' response too short"
+
+        # Run assertion checks
+        if test_data and test_data.assertions:
+            check_result = checker.check(
+                response=result.text,
+                config=test_data.assertions,
+                skill_name=skill_name
+            )
+            assert check_result.passed, check_result.message
 
     @pytest.mark.e2e
     @pytest.mark.slow
@@ -29,15 +72,13 @@ class TestSlowSkills:
         assert result.success, "Deep research failed to respond"
         assert result.text is not None, "Empty response from deep research"
 
-        # Skip if Gemini API returned no content (service issue)
+        # Skip if Gemini API returned no content
         if "no content available" in result.text.lower():
             pytest.skip("Gemini deep research returned no content (API issue)")
 
         assert len(result.text) > 200, "Deep research response too short"
 
         text_lower = result.text.lower()
-
-        # Should contain research indicators
         assert any(word in text_lower for word in ["research", "report", "finding", "result", "analysis"]), \
             f"Deep research response missing expected content: {result.text[:300]}"
 
@@ -59,12 +100,9 @@ class TestSlowSkills:
         if not result.success:
             pytest.skip("Deep research not available")
 
-        # Check if report was saved
-        # Note: User ID extraction from e2e_env may need adjustment
         user_id = e2e_env.get("user_id", 0)
         if user_id:
             reports = await get_user_reports(user_id)
-            # Recent report should exist
             assert len(reports) > 0, "No reports saved after deep research"
 
     @pytest.mark.e2e
@@ -119,11 +157,9 @@ class TestSlowSkills:
         import asyncio
         import time
 
-        # Send deep research request
         message = '/skill gemini-deep-research "Test progress updates"'
         sent = await telegram_client.send_message(bot_username, message)
 
-        # Collect messages over time to check for progress
         messages = []
         start = time.time()
         while time.time() - start < 60:
@@ -134,10 +170,8 @@ class TestSlowSkills:
                         messages.append(msg)
             await asyncio.sleep(5)
 
-        # Should have at least initial acknowledgment
         assert len(messages) >= 1, "No progress updates received"
 
-        # Check for progress indicators
         has_progress = any(
             "processing" in (m.text or "").lower() or
             "working" in (m.text or "").lower() or
@@ -146,5 +180,4 @@ class TestSlowSkills:
         )
         # Progress updates are optional but good UX
         if not has_progress and len(messages) == 1:
-            # Single response is acceptable
-            pass
+            pass  # Single response is acceptable

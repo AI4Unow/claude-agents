@@ -1,115 +1,24 @@
 # agents/tests/e2e/skills/test_remote_skills.py
-"""E2E tests for remote skills (executed on Modal)."""
+"""E2E tests for remote skills (executed on Modal).
+
+Uses dynamic skill discovery from SkillRegistry.
+"""
 import pytest
-from ..conftest import execute_skill, send_and_wait
+from ..conftest import execute_skill
 
-pytestmark = pytest.mark.requires_claude  # All tests in this module require Claude API
+from .skill_loader import (
+    get_skill_names,
+    is_local_skill,
+    is_slow_skill,
+    get_skill_timeout,
+)
+from .test_data_loader import TestDataLoader
 
-# Skills that need longer timeout (90s instead of 45s)
-SLOW_SKILLS = {
-    "planning", "research", "ai-multimodal", "content", "github",
-    "telegram-chat", "devops", "firebase-automation", "problem-solving",
-    "sequential-thinking", "skill-creator", "mcp-management",
-    "internal-comms", "worktree-manager", "gemini-deep-research",
-    "content-research-writer",
-    # Design skills are LLM-heavy and need extra time
-    "ui-ux-pro-max", "ui-styling", "frontend-design-pro", "frontend-design",
-}
+# Module-level marker
+pytestmark = pytest.mark.requires_claude
 
-# Local skills that get queued to Firebase instead of executing directly
-# These return a "task queued" response instead of skill output
-LOCAL_SKILLS = {
-    "canvas-design", "docx", "xlsx", "pptx", "pdf",
-    "media-processing", "image-enhancer", "video-downloader"
-}
-
-# Skill categories with expected response patterns
-# Broadened keywords to account for LLM output variability
-SKILL_ASSERTIONS = {
-    # Research skills - expect report/analysis structure
-    "planning": {"contains": ["plan", "step", "implement", "phase", "task", "approach"]},
-    "debugging": {"contains": ["debug", "issue", "fix", "error", "trace", "problem"]},
-    "research": {"contains": ["research", "find", "result", "information", "search", "discovered", "learn"]},
-    "code-review": {"contains": ["review", "code", "suggest", "improve", "quality", "issue"]},
-
-    # Development skills - expect code/technical output
-    "backend-development": {"contains": ["api", "endpoint", "database", "server", "route", "http"]},
-    "frontend-development": {"contains": ["component", "ui", "react", "button", "render", "jsx"]},
-    "mobile-development": {"contains": ["app", "mobile", "screen", "ios", "android", "react native", "flutter", "application", "platform", "navigation", "component", "stylesheet", "view", "login", "password", "text", "input", "button", "const", "function", "return"]},
-
-    # Design skills - expect design artifacts
-    "ui-ux-pro-max": {"contains": ["design", "ui", "component", "user", "interface", "layout", "form"]},
-    "ui-styling": {"contains": ["style", "css", "color", "tailwind", "theme", "class"]},
-    "frontend-design-pro": {"contains": ["design", "layout", "interface", "visual", "component", "ui", "keyframes", "animation", "style", "css", "color", "class"]},
-
-    # AI skills - expect AI-generated content
-    "ai-multimodal": {"contains": ["image", "vision", "analyze", "ai", "model", "multimodal"]},
-    "ai-artist": {"contains": ["create", "generate", "art", "image", "visual", "concept"]},
-    "gemini-grounding": {"contains": ["search", "ground", "fact", "source", "information"]},
-    "gemini-thinking": {"contains": ["think", "reason", "analyze", "step", "logic"]},
-
-    # Content skills - expect content output
-    "content": {"contains": ["content", "write", "create", "text", "copy"]},
-    "content-research-writer": {"contains": ["research", "write", "article", "content", "topic"]},
-
-    # Data skills - expect data handling
-    "data": {"contains": ["data", "analyze", "report", "insight", "metric"]},
-    "databases": {"contains": ["database", "query", "schema", "table", "sql"]},
-
-    # Integration skills - expect integration info
-    "github": {"contains": ["github", "repo", "issue", "repository", "commit"]},
-    "telegram-chat": {"contains": ["telegram", "chat", "message", "bot", "send"]},
-    "shopify": {"contains": ["shopify", "store", "product", "ecommerce"]},
-    "payment-integration": {"contains": ["payment", "stripe", "checkout", "transaction"]},
-
-    # DevOps skills - expect infra commands
-    "devops": {"contains": ["deploy", "docker", "cloud", "container", "kubernetes"]},
-    "firebase-automation": {"contains": ["firebase", "firestore", "auth", "database"]},
-
-    # Cognitive skills - expect structured thinking
-    "problem-solving": {"contains": ["problem", "solution", "approach", "solve", "step"]},
-    "sequential-thinking": {"contains": ["step", "think", "reason", "sequence", "process"]},
-
-    # Meta skills
-    "skill-creator": {"contains": ["skill", "create", "template", "define"]},
-    "mcp-management": {"contains": ["mcp", "server", "tool", "protocol"]},
-    "internal-comms": {"contains": ["communication", "update", "report", "status"]},
-    "worktree-manager": {"contains": ["worktree", "branch", "git", "parallel"]},
-}
-
-# Default test prompts per skill
-SKILL_PROMPTS = {
-    "planning": "Create a simple hello world feature",
-    "debugging": "Debug a null pointer exception",
-    "research": "Research Python async best practices",
-    "code-review": "Review this code: def foo(): pass",
-    "backend-development": "Create a simple REST endpoint",
-    "frontend-development": "Create a button component",
-    "mobile-development": "Create a login screen",
-    "ui-ux-pro-max": "Design a login form",
-    "ui-styling": "Create a modern button style",
-    "frontend-design-pro": "Design a dashboard layout",
-    "ai-multimodal": "Describe what AI can do",
-    "ai-artist": "Create a concept for a landscape",
-    "gemini-grounding": "What is the current weather API?",
-    "gemini-thinking": "Think through a sorting algorithm",
-    "content": "Write a short product description",
-    "content-research-writer": "Research and write about AI trends",
-    "data": "Analyze sales data patterns",
-    "databases": "Design a user table schema",
-    "github": "List common GitHub actions",
-    "telegram-chat": "What are Telegram bot capabilities?",
-    "shopify": "How to create a Shopify product?",
-    "payment-integration": "Explain Stripe checkout flow",
-    "devops": "How to deploy a Python app?",
-    "firebase-automation": "How to setup Firestore rules?",
-    "problem-solving": "Solve the FizzBuzz problem",
-    "sequential-thinking": "Think through a maze algorithm",
-    "skill-creator": "How to create a new skill?",
-    "mcp-management": "List available MCP servers",
-    "internal-comms": "Write a project status update",
-    "worktree-manager": "How to create a git worktree?",
-}
+# Initialize test data loader
+loader = TestDataLoader()
 
 
 class TestRemoteSkills:
@@ -117,11 +26,13 @@ class TestRemoteSkills:
 
     @pytest.mark.e2e
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("skill_name", list(SKILL_PROMPTS.keys()))
+    @pytest.mark.parametrize("skill_name", get_skill_names("remote"))
     async def test_skill_invocation(self, telegram_client, bot_username, skill_name):
-        """Test each remote skill can be invoked."""
-        prompt = SKILL_PROMPTS.get(skill_name, "Hello")
-        timeout = 90 if skill_name in SLOW_SKILLS else 45
+        """Test each remote skill can be invoked and responds."""
+        # Get test data (prompt, timeout, assertions)
+        test_data = loader.get(skill_name)
+        timeout = test_data.timeout if test_data else get_skill_timeout(skill_name)
+        prompt = test_data.prompt if test_data else "Hello"
 
         result = await execute_skill(
             telegram_client,
@@ -138,17 +49,15 @@ class TestRemoteSkills:
         text_lower = result.text.lower()
 
         # Handle local skills (queued to Firebase)
-        if skill_name in LOCAL_SKILLS:
+        if is_local_skill(skill_name):
             is_queued = "queue" in text_lower or "task" in text_lower
             assert is_queued or len(result.text) > 20, \
                 f"Local skill '{skill_name}' not queued: {result.text[:200]}"
-            return  # Skip further assertions for queued tasks
+            return
 
         assert len(result.text) > 20, f"Skill '{skill_name}' response too short"
 
-        # Check for error indicators - only fail on actual error responses
-        # not on skill responses that discuss errors (like debugging skill)
-        # Exclude skills that naturally discuss errors in their output
+        # Check for error indicators (exclude skills that discuss errors)
         error_discussing_skills = {"debugging", "code-review", "problem-solving"}
         if skill_name not in error_discussing_skills:
             is_actual_error = (
@@ -161,16 +70,16 @@ class TestRemoteSkills:
 
     @pytest.mark.e2e
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("skill_name", list(SKILL_ASSERTIONS.keys()))
+    @pytest.mark.parametrize("skill_name", get_skill_names("remote"))
     async def test_skill_response_content(self, telegram_client, bot_username, skill_name):
-        """Test skill responses contain expected content."""
-        # Skip local skills in this content test
-        if skill_name in LOCAL_SKILLS:
+        """Test skill responses contain expected content patterns."""
+        # Skip local skills
+        if is_local_skill(skill_name):
             pytest.skip(f"Skill '{skill_name}' is local (queued)")
 
-        prompt = SKILL_PROMPTS.get(skill_name, "Hello")
-        assertions = SKILL_ASSERTIONS.get(skill_name, {"contains": []})
-        timeout = 90 if skill_name in SLOW_SKILLS else 45
+        test_data = loader.get(skill_name)
+        timeout = test_data.timeout if test_data else get_skill_timeout(skill_name)
+        prompt = test_data.prompt if test_data else "Hello"
 
         result = await execute_skill(
             telegram_client,
@@ -185,21 +94,22 @@ class TestRemoteSkills:
 
         text_lower = result.text.lower()
 
-        # Handle queued response (local skill fallback)
+        # Handle queued response
         if "queue" in text_lower and "task" in text_lower:
             pytest.skip(f"Skill '{skill_name}' queued for local execution")
 
-        # Skip if circuit breaker is open (service unavailable)
+        # Skip if circuit breaker is open
         if "circuit" in text_lower and "opened" in text_lower:
-            pytest.skip(f"Skill '{skill_name}' circuit breaker open (service issue)")
+            pytest.skip(f"Skill '{skill_name}' circuit breaker open")
 
-        # Check expected keywords (at least one must match)
-        expected = assertions.get("contains", [])
-        if expected:
-            matched = any(word in text_lower for word in expected)
-            assert matched, \
-                f"Skill '{skill_name}' response missing expected content. " \
-                f"Expected one of: {expected}. Got: {result.text[:200]}"
+        # Check expected patterns if test data has assertions
+        if test_data and test_data.assertions:
+            patterns = test_data.assertions.get("patterns", [])
+            if patterns:
+                matched = any(p.lower() in text_lower for p in patterns)
+                assert matched, \
+                    f"Skill '{skill_name}' response missing expected content. " \
+                    f"Expected one of: {patterns}. Got: {result.text[:200]}"
 
     @pytest.mark.e2e
     @pytest.mark.asyncio
@@ -214,7 +124,6 @@ class TestRemoteSkills:
         )
 
         assert result.success, "No response to empty skill invocation"
-        # Should show usage hint or ask for input
         text_lower = result.text.lower()
         assert any(word in text_lower for word in ["usage", "help", "provide", "specify", "what"]), \
             f"Expected usage hint, got: {result.text[:200]}"
