@@ -4,33 +4,35 @@
 
 **Phase:** Production MVP
 **Deploy URL:** https://duc-a-nguyen--claude-agents-telegramchatagent-app.modal.run
-**Last Updated:** Jan 2, 2026
+**Last Updated:** Jan 3, 2026
 
 **Statistics:**
-- **61 skills** in agents/skills/ directory (8 local, 40+ remote, 13 hybrid)
-- **90+ Python files** in agents/src/
-- **40 test files** (unit + stress tests with Locust framework)
-- **~2,000 lines** in main.py
-- **8 circuit breakers** (exa, tavily, firebase, qdrant, claude, telegram, gemini, evolution)
-- **18 API endpoints** (health, webhooks, skill execution, reports, traces, circuits)
+- **102 skills** in agents/skills/ directory
+- **135+ Python files** in agents/src/
+- **50+ Python test files** (unit, e2e, stress tests)
+- **~3,080 lines** in main.py
+- **11 circuit breakers** (exa, tavily, firebase, qdrant, claude, telegram, gemini, evolution, google_calendar, google_tasks, apple_caldav)
+- **22 API endpoints** (health, webhooks, skill execution, reports, traces, circuits, auth)
 - **4 agents** (Telegram, GitHub, Data, Content)
 
 **Key Features:**
-- Execution tracing with tool-level timing
-- Self-improvement loop with Telegram admin approval
+- Execution tracing with tool-level timing (10% success, 100% error)
+- Self-improvement loop with Telegram admin approval (HITL)
 - State management with L1/L2 caching
 - Gemini API integration for research, grounding, vision, thinking
 - Firebase Storage for research reports + content downloads
 - User tier system (guest, user, developer, admin)
 - Hybrid skill architecture (local, remote, both)
+- **Bidirectional Calendar Sync** (Google Calendar, Google Tasks, Apple CalDAV)
+- **Smart Timing System** (Behavior-based reminder optimization)
+- **Auto-Scheduler** (Multi-skill orchestration with DAG validation)
+- **NLP Parser** (Hybrid dateparser + LLM for temporal extraction)
 - **Personalization system** (profiles, context, macros, activity learning)
 - **Smart FAQ system** (hybrid keyword + semantic matching)
 - **PKM Second Brain** (capture, organize, semantic search, tasks)
 - **Command Router Pattern** (decorator-based command registration)
-- **Content download links** (24h signed URLs for all content skills)
-- **WhatsApp Evolution API** (alternative messaging channel)
-- **Smart Task Management** (NLP parsing, calendar sync, React dashboard)
 - **Claude Agents SDK** (hooks, tools, checkpointing for agent autonomy)
+- **Skill Quality System** (automated scoring, 80+ threshold, pre-commit validation)
 
 ## Repository Structure
 
@@ -87,20 +89,21 @@
     ├── scripts/                   # Utility scripts (6)
     ├── config/                    # Configuration files
     ├── validators/                # Input validators
-    └── tests/                     # 37 test files
+    └── tests/                     # 50 test files
 ```
 
-## Entry Point (main.py - ~2,000 lines)
+## Entry Point (main.py - ~3,080 lines)
 
 The main Modal app defining:
-- **FastAPI web application** with 14 endpoints
+- **FastAPI web application** with 22 endpoints
 - **TelegramChatAgent class** with @enter hook for cache warming
 - **4 specialized agents** (Telegram, GitHub, Data, Content)
-- **Skill API** with execution modes (simple, routed, auto, orchestrated, chained, evaluated)
+- **Skill API** with 10 execution modes (simple, routed, auto, orchestrated, chained, evaluated, dynamic, etc.)
 - **User tier system** with permission-based commands
 - **Reports API** for Firebase Storage access
-- **Cron jobs** for scheduled tasks
-- **Test functions** for service verification
+- **Cron jobs** for scheduled tasks (hourly, daily, monthly)
+- **Circuit status monitoring** and auto-recovery
+- **Bidirectional calendar synchronization** handlers
 
 ### Key Decorators
 ```python
@@ -130,8 +133,11 @@ The main Modal app defining:
 | `llm.py` | 200 | Claude API client (Anthropic via ai4u.now proxy) |
 | `agentic.py` | 260 | Agentic loop with tool execution + conversation persistence |
 | `qdrant.py` | 617 | Qdrant vector database client |
-| `telegram.py` | 400 | Telegram message utilities + formatters (markdown-to-HTML) |
-| `embeddings.py` | 187 | Gemini embeddings (gemini-embedding-001, 3072 dim, batch support) |
+| `google_calendar.py` | 350 | Google Calendar OAuth + Events API |
+| `google_tasks.py` | 280 | Google Tasks API integration |
+| `apple_caldav.py` | 320 | Apple CalDAV/iCloud integration |
+| `telegram.py` | 400 | Telegram message utilities + formatters |
+| `embeddings.py` | 187 | Gemini embeddings (gemini-embedding-001) |
 | `media.py` | 127 | Media processing utilities |
 | `personalization.py` | 100 | Personalization loader with L1/L2 cache |
 | `pkm.py` | 294 | PKM logic, classification, semantic search |
@@ -139,9 +145,9 @@ The main Modal app defining:
 | `user_context.py` | 150 | Work context management |
 | `user_macros.py` | 260 | Personal macros with NLU detection |
 | `activity.py` | 250 | Activity logging + pattern analysis |
-| `evolution.py` | - | Agent evolution and self-improvement |
+| `evolution.py` | 220 | WhatsApp Evolution API client |
 | `data_deletion.py` | 160 | GDPR-compliant data deletion |
-| `token_refresh.py` | - | OAuth token management |
+| `token_refresh.py` | 180 | OAuth token management & refresh |
 
 ### Firebase Modular Services (src/services/firebase/)
 
@@ -158,7 +164,9 @@ The main Modal app defining:
 | `local_tasks.py` | Local skill task queue |
 | `pkm.py` | PKM data persistence |
 | `ii_framework.py` | Temporal entities, decisions |
-| `tokens.py` | OAuth tokens |
+| `tokens.py` | General OAuth tokens |
+| `calendar_tokens.py` | Calendar-specific OAuth tokens |
+| `ux_metrics.py` | UX performance tracking |
 
 ### Tools (src/tools/)
 
@@ -177,24 +185,41 @@ The main Modal app defining:
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `state.py` | 500+ | StateManager with L1 TTL cache + L2 Firebase, user tiers |
-| `resilience.py` | 350 | Circuit breakers (8 services) + retry decorator |
-| `trace.py` | 200 | Execution tracing with TraceContext, ToolTrace |
-| `intent.py` | 150 | Intent classification (CHAT, SKILL, ORCHESTRATE) |
+| `state.py` | 598 | StateManager with L1 TTL cache + L2 Firebase, user tiers |
+| `resilience.py` | 508 | Circuit breakers (11 services) + retry decorator |
+| `trace.py` | 311 | Execution tracing with TraceContext, ToolTrace |
+| `intent.py` | 334 | Intent classification (CHAT, SKILL, ORCHESTRATE) |
 | `router.py` | 160 | Semantic skill routing via Qdrant |
-| `improvement.py` | 500 | Self-improvement service with Telegram approval |
-| `orchestrator.py` | 500 | Multi-skill task orchestration with progress |
+| `improvement.py` | 410 | Self-improvement service with Telegram approval |
+| `orchestrator.py` | 458 | Multi-skill task orchestration with progress |
+| `calendar_sync.py` | 452 | Bidirectional sync with Google/Apple |
+| `smart_timing.py` | 469 | Intelligent behavior-based scheduling |
+| `auto_scheduler.py` | 420 | Proactive multi-skill orchestration |
+| `task_extractor.py` | 312 | NLP-based task extraction from chat |
+| `nlp_parser.py` | 289 | Hybrid dateparser + LLM parser |
+| `completion_verifier.py` | 240 | NLP completion verification |
 | `faq.py` | 129 | Smart FAQ with hybrid keyword + semantic matching |
 | `status_messages.py` | 100 | Real-time progress updates |
 | `quick_replies.py` | 100 | Contextual inline buttons |
 | `complexity.py` | 130 | Task complexity classification |
-| `evaluator.py` | 287 | Quality evaluation and optimization |
-| `context_optimization.py` | 283 | Context compaction and optimization |
+| `evaluator.py" | 287 | Quality evaluation and optimization |
+| `context_optimization.py" | 283 | Context compaction and optimization |
 | `chain.py` | 243 | Sequential skill pipeline execution |
 | `suggestions.py` | 200 | Proactive suggestion engine |
 | `macro_executor.py` | 170 | Macro execution with rate limiting |
 | `conversation_fsm.py` | 150 | Finite State Machine for conversations |
 | `onboarding.py` | 150 | Interactive welcome flow |
+
+### Claude Agents SDK (src/sdk/)
+
+| File | Purpose |
+|------|---------|
+| `agent.py` | Configurable agent factory |
+| `config.py` | SDK configuration |
+| `hooks/` | Tracing, circuit, and trust hooks |
+| `tools/` | SDK-specific tools (memory, web_search, tasks) |
+| `manager.py` | Agent lifecycle management |
+| `checkpoint.py` | Session checkpointing and recovery |
 
 ### Models (src/models/)
 
@@ -204,7 +229,8 @@ The main Modal app defining:
 
 #### Circuit Breakers (resilience.py)
 
-8 pre-configured circuits with states: CLOSED, OPEN, HALF_OPEN
+11 pre-configured circuits with states: CLOSED, OPEN, HALF_OPEN
+
 ```python
 exa_circuit = CircuitBreaker("exa_api", threshold=3, cooldown=30)
 tavily_circuit = CircuitBreaker("tavily_api", threshold=3, cooldown=30)
@@ -214,6 +240,9 @@ claude_circuit = CircuitBreaker("claude_api", threshold=3, cooldown=60)
 telegram_circuit = CircuitBreaker("telegram_api", threshold=5, cooldown=30)
 gemini_circuit = CircuitBreaker("gemini_api", threshold=3, cooldown=60)
 evolution_circuit = CircuitBreaker("evolution_api", threshold=5, cooldown=30)
+google_calendar_circuit = CircuitBreaker("google_calendar", threshold=3, cooldown=60)
+google_tasks_circuit = CircuitBreaker("google_tasks", threshold=3, cooldown=60)
+apple_caldav_circuit = CircuitBreaker("apple_caldav", threshold=3, cooldown=60)
 ```
 
 Features:
@@ -254,53 +283,51 @@ Features:
 - **User modes**: simple, routed, auto
 - **Conversation persistence**: Last 20 messages per user
 
-## Skills (agents/skills/ - 61 total)
+## Skills (agents/skills/ - 102 total)
 
 Organized by deployment type:
 
-### Local Only (8)
-Require local execution (browser automation, consumer IP):
-- `canvas-design/`, `docx/`, `xlsx/`, `pptx/`, `pdf/`
-- `image-enhancer/`, `media-processing/`, `video-downloader/`
+### Local Only (14)
+Require local execution (browser automation, consumer IP, local file access):
+- `canvas-design/`, `docx/`, `xlsx/`, `pptx/`, `pdf/`, `mcp-builder/`
+- `image-enhancer/`, `media-processing/`, `video-downloader/`, `video-to-gif/`
+- `content-downloader/`, `file-organizer/`, `invoice-organizer/`, `receipt-scanner/`
 
-### Remote (40+)
+### Remote (73)
 Deployed to Modal.com:
 
 **Agent Skills:**
-- `telegram-chat/`, `github/`, `data/`, `content/`
+- `telegram-chat/`, `github/`, `data/`, `content/`, `planning/`, `debugging/`
 
 **Development:**
-- `planning/`, `debugging/`, `code-review/`, `research/`
-- `skill-creator/`, `problem-solving/`, `internal-comms/`
+- `backend-development/`, `frontend-development/`, `mobile-development/`
+- `code-review/`, `research/`, `skill-creator/`, `problem-solving/`
+- `internal-comms/`, `databases/`, `devops/`, `web-frameworks/`, `shopify/`
 
-**Backend:**
-- `backend-development/`, `databases/`, `devops/`
-- `web-frameworks/`, `shopify/`
+**Design & UI:**
+- `ui-ux-pro-max/`, `ui-styling/`, `frontend-design/`, `frontend-design-pro/`
+- `artifacts-builder/`, `presentation-expert/`, `logo-designer/`
 
-**Frontend:**
-- `frontend-development/`, `frontend-design/`, `frontend-design-pro/`
-- `ui-ux-pro-max/`, `ui-styling/`
-
-**Mobile:**
-- `mobile-development/`
-
-**AI:**
+**AI & Research:**
+- `gemini-deep-research/`, `gemini-grounding/`, `gemini-thinking/`
 - `ai-multimodal/`, `ai-artist/`, `content-research-writer/`
+- `seo-expert/`, `market-researcher/`, `competitor-analysis/`
 
-**Gemini:**
-- `gemini-deep-research/`, `gemini-grounding/`, `gemini-thinking/`, `gemini-vision/`
-
-**Automation:**
+**Automation & Marketing:**
 - `tiktok-automation/`, `linkedin-automation/`, `fb-to-tiktok/`
+- `ads-management/`, `affiliate-marketing/`, `social-media-manager/`
+- `email-marketing/`, `growth-hacker/`
 
 **Utilities:**
 - `raffle-winner-picker/`, `domain-name-brainstormer/`, `theme-factory/`
+- `personal-assistant/`, `travel-planner/`, `health-tracker/`
 
-### Hybrid (13)
+### Hybrid (15)
 Both local and remote execution:
-- `better-auth/`, `chrome-devtools/`, `mcp-builder/`, `mcp-management/`
-- `repomix/`, `sequential-thinking/`, `webapp-testing/`
-- `skill-share/`, `worktree-manager/`, `image-enhancer/` (also local)
+- `better-auth/`, `chrome-devtools/`, `mcp-management/`, `repomix/`
+- `sequential-thinking/`, `webapp-testing/`, `skill-share/`, `worktree-manager/`
+- `gemini-vision/`, `image-enhancer/`, `pdf-to-markdown/`, `web-search/`
+- `context-engineering/`, `prompt-optimizer/`, `code-interpreter/`
 
 ### Skill Structure
 
@@ -395,12 +422,19 @@ deployment: local|remote|both    # Determines execution environment
 | Document Processing | python-docx, openpyxl, python-pptx, pypdf | Various |
 | Logging | structlog | >=24.1.0 |
 
-## Tests (37 files)
+## Tests (50 files)
 
 ### Unit Tests
 Located in skill scripts:
 - `agents/skills/*/scripts/tests/test_*.py`
 - Coverage for individual skill utilities
+
+### E2E Tests
+Located in `agents/tests/e2e/`:
+- Comprehensive E2E test suite for core flows
+- Telegram bot integration tests
+- Circuit breaker validation
+- Skill activation and execution tests
 
 ### Stress Tests
 Located in `agents/tests/stress/`:

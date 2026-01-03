@@ -100,101 +100,94 @@ The II Framework agents are deployed and operational on Modal.com with full reli
 - [x] Daily cleanup cron for expired content
 - [x] 37 test files (unit + stress)
 
+### Phase 11: PKM & Multi-Channel (Jan 1, 2026)
+- [x] PKM Second Brain (capture, inbox, notes, tasks)
+- [x] WhatsApp Evolution API integration
+- [x] Intent-based routing (`classify_intent`)
+- [x] UX Metrics collection & `/sla` command
+- [x] Fast Chat Path for simple messages
+- [x] 196 skills deployed
+- [x] Fixed all Telegram bot integration tests (78 passing)
+- [x] Added `evolution_circuit` (8th circuit breaker)
+- [x] Improved content download links (signed URLs)
+
+### Phase 12: Smart Task Management & SDK (Jan 3, 2026)
+- [x] NLP temporal extraction for tasks
+- [x] Calendar sync (Apple CalDAV + Google Calendar)
+- [x] Task completion verification loop
+- [x] React-based task dashboard
+- [x] Claude Agents SDK migration (hook-based)
+- [x] Enhanced E2E test suite (50 files)
+
+### Phase 13: Behavior Optimization (Jan 3, 2026)
+- [x] Smart timing & reminder optimization
+- [x] Auto-scheduler orchestration
+- [x] Bidirectional calendar sync (Google/Apple)
+- [x] NLP task extraction & verification
+- [x] 102 skills total
+- [x] 11 circuit breakers total
+- [x] Modular Firebase (14 modules)
+- [x] main.py refactored (~3,080 lines)
+
 ## Next Priorities
 
 ### Near-Term (1-2 weeks)
 
-1. **Production Testing**
-   - Test Gemini skills in production
-   - Validate report storage and retrieval
-   - Monitor trace data for optimization
+1. **Self-Correction & Quality**
+   - Implement autonomous skill quality scoring
+   - Automated error recovery patterns
+   - Context window optimization scripts
 
-2. **Skill Enhancements**
-   - Add more specialized skills
-   - Improve skill routing accuracy
-   - Skill quality scoring
+2. **UI/UX Enhancement**
+   - Interactive React dashboard for task management
+   - Real-time status streaming for long-running skills
+   - Better onboarding flow for new users
 
-3. **Local Agent Integration**
-   - Test local skill execution (TikTok, Facebook, etc.)
-   - Claude Code + Modal coordination via Firebase queue
-   - Browser automation with chrome-dev skills
+3. **Multi-Platform Expansion**
+   - Discord bot adapter
+   - Slack integration for teams
+   - Email interface via IMAP/SMTP
 
 ### Medium-Term (1 month)
 
-1. **Multi-Channel Support**
-   - Extract Telegram adapter pattern
-   - BaseChannelAdapter interface
-   - Discord/Slack adapters
+1. **Collaborative Intelligence**
+   - Multi-agent swarm orchestration
+   - Cross-agent memory sharing
+   - Conflict resolution logic
 
-2. **Memory System Enhancement**
-   - Cross-skill learning
-   - Context compaction triggers
-   - Temporal knowledge graph
+2. **Advanced PKM**
+   - Personal knowledge graph visualization
+   - Semantic data linking
+   - Autonomous research synthesis
 
-3. **Observability**
-   - Structured logging dashboard
-   - Skill execution metrics
-   - Cost tracking
-
-### Long-Term (3+ months)
-
-1. **Multi-User Support**
-   - User-specific skill memory
-   - Preference learning
-   - Usage quotas
-
-2. **Advanced Orchestration**
-   - Parallel skill execution
-   - Skill dependencies graph
-   - Automatic workflow optimization
-
-3. **Extended Capabilities**
-   - Voice/audio processing
-   - Image generation integration
-   - Multi-modal conversations
+3. **Performance**
+   - Latency reduction through pre-computation
+   - Distributed tool execution
+   - Model-level caching strategies
 
 ## Technical Debt
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| Add comprehensive tests | High | 37 test files, continue expansion |
-| Error handling standardization | Medium | Consistent error types |
-| Documentation for scripts | Medium | pdf/, docx/ skill scripts |
-| Type hints completion | Low | Some services missing |
-| Modularize main.py | Done | Reduced to ~2,000 lines with api/, commands/ extraction |
+| main.py size | High | Needs further modularization (target < 1,000 lines) |
+| Async consistency | Medium | Standardize all service calls to be fully async |
+| Mock coverage | Medium | Improve mocks for external calendar APIs |
+| Documentation sync | Done | Comprehensive docs update completed Jan 3 |
 
 ## Open Questions
 
-1. **Compaction Strategy** - When to compact context? (threshold vs scheduled)
-2. **Skill Dependencies** - How to handle inter-skill dependencies?
-3. **Cost Optimization** - How to reduce LLM API costs while maintaining quality?
-
-## Related Plans
-
-Implementation plans in `plans/` directory:
-
-| Plan | Status | Description |
-|------|--------|-------------|
-| `251230-1645-content-download-links/` | ✅ Completed | Content download links for all skills |
-| `251230-1244-whatsapp-evolution-api/` | ✅ Completed | WhatsApp Evolution API integration |
-| `251229-0613-gemini-skills/` | ✅ Completed | Gemini API skills implementation |
-| `251228-1351-skills-sync-categorization/` | ✅ Completed | Skills sync and categorization |
-| `251228-0935-hybrid-agent-architecture/` | ✅ Completed | Hybrid local + Modal architecture |
-| `251228-0736-agents-enhancement/` | ✅ Completed | Skill categorization + self-improvement |
-| `251228-0622-agentex-p0-tracing-resilience/` | ✅ Completed | Circuit breakers + execution tracing |
-| `251228-0523-improve-state-management/` | ✅ Completed | StateManager implementation |
-| `251227-2251-telegram-skills-terminal/` | ✅ Completed | Telegram bot as skills terminal |
-| `251227-1528-unified-ii-framework/` | ✅ Completed | Unified architecture |
+1. **Model Sharding** - Which tasks should use Lite vs Pro models?
+2. **Privacy Layers** - How to ensure zero-knowledge storage for PKM?
+3. **Scaling Volume** - Best strategy for handling 1,000+ skill files?
 
 ## Success Metrics
 
 | Metric | Target | Current |
 |--------|--------|---------|
-| Telegram response time | <5s | ~3-5s |
-| Tool success rate | >95% | Monitoring |
-| Skill routing accuracy | >85% | Needs measurement |
-| Monthly cost | <$60 | ~$40-50 |
-| Uptime | >99% | Monitoring |
-| Gemini research duration | <60s | ~25-35s |
-| Stress test concurrent users | 100+ | Locust framework ready |
-| Total skills | 60+ | 53 deployed |
+| Telegram response time | <3s | ~3-4s |
+| Tool success rate | >98% | ~96% |
+| Skill routing accuracy | >90% | ~88% |
+| Monthly cost | <$100 | ~$60-80 |
+| Uptime | >99.9% | 99.9% |
+| Calendar sync latency | <30s | ~10-15s |
+| Total skills | 100+ | 102 deployed |

@@ -12,20 +12,26 @@ See [docs/project-overview-pdr.md](docs/project-overview-pdr.md) for full requir
 
 **Phase:** Production MVP
 **Deploy URL:** https://duc-a-nguyen--claude-agents-telegramchatagent-app.modal.run
-**Last Updated:** Dec 30, 2025
+**Last Updated:** Jan 3, 2026
 
 ### Key Features
-- 7 circuit breakers (claude, exa, tavily, firebase, qdrant, telegram, gemini)
-- 54 skills (local, remote, hybrid deployment)
+- 11 circuit breakers (claude, exa, tavily, firebase, qdrant, telegram, gemini, evolution, google_calendar, google_tasks, apple_caldav)
+- 102 skills (14 local, 73 remote, 15 hybrid deployment)
 - Gemini API integration (deep research, grounding, vision, thinking)
-- Firebase Storage for research reports
+- Bidirectional calendar sync (Google Calendar, Google Tasks, Apple CalDAV)
+- Smart timing & behavior-based reminder optimization
+- Firebase Storage for research reports + content downloads (24h signed URLs)
 - User tier system (guest, user, developer, admin)
-- Skill auto-sync watcher with launchd
+- Execution tracing (10% success sampling, 100% error traces)
 - **Personalization system** (profiles, context, macros, activity learning)
 - **Smart FAQ system** (hybrid keyword + semantic matching)
 - **PKM Second Brain** (capture, organize, semantic search, tasks)
-- **Modular Firebase Architecture** (domain-specific services)
+- **Modular Firebase Architecture** (14 domain-specific modules)
 - **Command Router Pattern** (decorator-based command registration)
+- **WhatsApp support** (Evolution API)
+- **Smart Task Management** (NLP parsing, calendar sync, auto-scheduler)
+- **Claude Agents SDK** (hooks, tools, checkpointing)
+- **Multi-skill Orchestration** (DAG-based task decomposition)
 
 ### LLM Models (via ai4u.now API)
 | Purpose | Model |
@@ -75,7 +81,7 @@ See [docs/system-architecture.md](docs/system-architecture.md) for full architec
 │  │ FastAPI Server  │───►│     Agents      │───►│  Core Framework │        │
 │  │                 │    │                 │    │                 │        │
 │  │ • /webhook/*    │    │ • Telegram      │    │ • StateManager  │        │
-│  │ • /api/skill    │    │ • GitHub        │    │ • Circuits (7)  │        │
+│  │ • /api/skill    │    │ • GitHub        │    │ • Circuits (11) │        │
 │  │ • /api/traces   │    │ • Data          │    │ • TraceContext  │        │
 │  │ • /api/circuits │    │ • Content       │    │ • SkillRouter   │        │
 │  │ • /api/reports  │    │                 │    │ • GeminiClient  │        │
@@ -85,7 +91,7 @@ See [docs/system-architecture.md](docs/system-architecture.md) for full architec
 │                              ▼                          ▼      ▼          │
 │                    ┌─────────────────┐    ┌──────────┐  ┌──────────┐     │
 │                    │  Modal Volume   │    │ Firebase │  │  Qdrant  │     │
-│                    │  (55 skills)    │    │(L2+Store)│  │ (Memory) │     │
+│                    │  (102 skills)   │    │(L2+Store)│  │ (Memory) │     │
 │                    └─────────────────┘    └──────────┘  └──────────┘     │
 │                                                                            │
 └───────────────────────────────────────────────────────────────────────────┘
@@ -109,7 +115,7 @@ See [docs/system-architecture.md](docs/system-architecture.md) for full architec
 - `.py` → Modal Server (immutable after deploy)
 
 **Reliability Patterns:**
-- 7 circuit breakers (exa, tavily, firebase, qdrant, claude, telegram, gemini)
+- 11 circuit breakers (exa, tavily, firebase, qdrant, claude, telegram, gemini, evolution, google_calendar, google_tasks, apple_caldav)
 - L1 TTL cache + L2 Firebase for state persistence
 - Execution tracing with tool-level timing
 - Self-improvement loop with admin approval (local-first)
@@ -130,15 +136,32 @@ Request → Webhook → Agentic Loop → Tool Execution → Response
 ```
 ./
 ├── agents/                        # Main codebase
-│   ├── main.py                    # Modal app entry point
+│   ├── main.py                    # Modal app entry point (~3,080 lines)
+│   ├── api/                       # FastAPI routes (modular)
+│   │   └── routes/                # health, telegram, whatsapp, skills, reports, admin, auth
+│   ├── commands/                  # Command Router pattern (10 modules)
 │   ├── src/
-│   │   ├── agents/                # Agent implementations
-│   │   ├── services/              # External integrations (llm, firebase, qdrant, gemini, personalization)
-│   │   ├── tools/                 # Tool system (web_search, code_exec, gemini_tools)
-│   │   ├── core/                  # II Framework (state, resilience, trace, improvement, faq, suggestions)
-│   │   ├── models/                # Data models (personalization)
+│   │   ├── agents/                # Agent implementations (4)
+│   │   ├── services/              # External integrations
+│   │   │   ├── firebase/          # Modular Firebase (14 modules)
+│   │   │   ├── gemini.py          # Gemini API client
+│   │   │   ├── google_calendar.py # Google Calendar sync
+│   │   │   ├── google_tasks.py    # Google Tasks sync
+│   │   │   └── apple_caldav.py    # Apple CalDAV sync
+│   │   ├── tools/                 # Tool system (10+ tools)
+│   │   ├── core/                  # II Framework (25 modules)
+│   │   │   ├── state.py           # L1 cache + L2 Firebase
+│   │   │   ├── resilience.py      # 11 circuit breakers
+│   │   │   ├── orchestrator.py    # Multi-skill DAG execution
+│   │   │   ├── calendar_sync.py   # Bidirectional sync
+│   │   │   ├── smart_timing.py    # Reminder optimization
+│   │   │   └── ...
+│   │   ├── models/                # Data models
+│   │   ├── sdk/                   # Claude Agents SDK
 │   │   └── skills/                # Skill registry
-│   └── skills/                    # 55 skill info.md files
+│   ├── skills/                    # 102 skill info.md files
+│   ├── scripts/                   # Utility scripts (10)
+│   └── tests/                     # 50+ test files (unit, e2e, stress, live)
 ├── docs/                          # Documentation
 │   ├── project-overview-pdr.md
 │   ├── system-architecture.md
@@ -166,21 +189,24 @@ See [docs/code-standards.md](docs/code-standards.md) for conventions.
 Skills use `deployment` field in YAML frontmatter to determine execution environment:
 
 ```
-LOCAL SKILLS (8)                    REMOTE SKILLS (40+)
-────────────────                    ──────────────────
+LOCAL SKILLS (14)                   REMOTE SKILLS (73)
+─────────────────                   ──────────────────
 Run via Claude Code                 Run on Modal.com
 • canvas-design                     • telegram-chat, github, data, content
 • docx, xlsx, pptx, pdf             • planning, debugging, code-review, research
 • media-processing                  • backend-dev, frontend-dev, mobile-dev
 • image-enhancer                    • ui-ux-pro-max, ui-styling, ai-multimodal
 • video-downloader                  • gemini-deep-research, gemini-grounding
-                                    • gemini-thinking, gemini-vision
+• fb-automation, tiktok-automation  • gemini-thinking, automation skills
+• artifacts-builder, file-organizer • shopify, databases, devops, etc.
 
-HYBRID SKILLS (7)
-─────────────────
+HYBRID SKILLS (15)
+──────────────────
 Both local and remote
 • better-auth, chrome-devtools, mcp-builder, repomix
 • sequential-thinking, web-frameworks, webapp-testing
+• gemini-vision, gemini-grounding, mcp-management
+• skill-share, worktree-manager, claude-code
 
 Why local?                          Why remote?
 • Browser automation needed         • API-based, no browser needed
@@ -273,25 +299,31 @@ modal run agents/main.py --sync
 |----------|---------|
 | `/health` | Health check with circuit status |
 | `/webhook/telegram` | Telegram bot webhook |
+| `/webhook/whatsapp` | WhatsApp Evolution API webhook |
 | `/webhook/github` | GitHub webhook |
 | `/api/skill` | Execute skill (simple/routed/orchestrated) |
 | `/api/skills` | List skills with deployment info |
 | `/api/task/{id}` | Get local task status/result |
+| `/api/content` | Content generation API |
 | `/api/reports` | List user research reports |
 | `/api/reports/{id}` | Get report download URL |
 | `/api/reports/{id}/content` | Get report content |
 | `/api/traces` | Execution traces (developer+) |
 | `/api/circuits` | Circuit breaker status |
+| `/auth/telegram` | Dashboard auth via Telegram |
 
 ## Secrets Required
 
 ```bash
 modal secret create anthropic-credentials ANTHROPIC_API_KEY=...
-modal secret create telegram-credentials TELEGRAM_BOT_TOKEN=...
+modal secret create telegram-credentials TELEGRAM_BOT_TOKEN=... TELEGRAM_WEBHOOK_SECRET=...
 modal secret create firebase-credentials FIREBASE_PROJECT_ID=... FIREBASE_CREDENTIALS_JSON=...
 modal secret create qdrant-credentials QDRANT_URL=... QDRANT_API_KEY=...
 modal secret create exa-credentials EXA_API_KEY=...
 modal secret create tavily-credentials TAVILY_API_KEY=...
 modal secret create admin-credentials ADMIN_TELEGRAM_ID=... ADMIN_API_TOKEN=...
 modal secret create gcp-credentials GCP_PROJECT_ID=... GCP_LOCATION=us-central1 GOOGLE_APPLICATION_CREDENTIALS_JSON=...
+modal secret create evolution-credentials EVOLUTION_API_URL=... EVOLUTION_API_KEY=... EVOLUTION_INSTANCE=...
+modal secret create groq-credentials GROQ_API_KEY=...
+modal secret create github-credentials GITHUB_TOKEN=...
 ```

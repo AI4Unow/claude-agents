@@ -13,55 +13,28 @@
 agents/
 ├── modal.toml                    # Modal project config
 ├── requirements.txt              # Python dependencies
-├── main.py                       # Modal app entry point
+├── main.py                       # Modal app entry point (~3,080 lines)
+├── api/                          # FastAPI Routes (modular)
+├── commands/                     # Command Handlers (Router pattern)
 ├── src/
-│   ├── __init__.py
-│   ├── config.py                 # Environment configuration
-│   ├── agents/
-│   │   ├── __init__.py
-│   │   ├── base.py               # BaseAgent class
-│   │   ├── content_generator.py  # Content Agent
-│   │   ├── data_processor.py     # Data Agent
-│   │   └── github_automation.py  # GitHub Agent
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── agentic.py            # Agentic loop with tools
-│   │   ├── llm.py                # Claude API wrapper
-│   │   ├── firebase.py           # Firebase client
-│   │   ├── qdrant.py             # Qdrant client
-│   │   ├── embeddings.py         # Embedding generation
-│   │   └── token_refresh.py      # Token utilities
-│   ├── tools/
-│   │   ├── __init__.py
-│   │   ├── base.py               # Base tool interface
-│   │   ├── registry.py           # Tool registry
-│   │   ├── web_search.py         # Exa + Tavily search
-│   │   ├── web_reader.py         # URL content fetching
-│   │   ├── code_exec.py          # Python execution
-│   │   ├── datetime_tool.py      # Date/time utilities
-│   │   └── memory_search.py      # Qdrant search
-│   ├── core/
-│   │   ├── __init__.py
-│   │   ├── state.py             # L1/L2 state management
-│   │   ├── resilience.py        # Circuit breakers, retry logic
-│   │   ├── trace.py             # Execution tracing
-│   │   ├── improvement.py       # Self-improvement service
-│   │   ├── router.py            # Semantic skill routing
-│   │   ├── orchestrator.py      # Multi-skill orchestration
-│   │   ├── chain.py             # Skill chaining
-│   │   ├── evaluator.py         # Quality evaluation
-│   │   └── context_optimization.py
-│   ├── skills/
-│   │   └── registry.py           # Progressive disclosure
-│   └── utils/
-│       ├── __init__.py
-│       └── logging.py            # Structured logging
-├── skills/                       # Skill info.md files (II Framework)
-│   ├── CLAUDE.md
-│   ├── telegram-chat/info.md
-│   ├── github/info.md
+│   ├── agents/                   # Agent implementations
+│   ├── services/                 # External integrations
+│   │   ├── firebase/             # Modular Firebase (14 modules)
+│   │   ├── google_calendar.py    # Google Calendar
+│   │   ├── google_tasks.py       # Google Tasks
+│   │   ├── apple_caldav.py       # Apple iCloud/Caldav
+│   │   └── ...
+│   ├── sdk/                      # Claude Agents SDK
+│   ├── tools/                    # Tool implementations (10+)
+│   ├── core/                     # II Framework core
+│   │   ├── orchestrator.py       # Multi-skill decomposition
+│   │   ├── calendar_sync.py      # Bidirectional sync logic
+│   │   ├── smart_timing.py       # Behavior-based scheduling
+│   │   ├── nlp_parser.py         # Date/Time/Intent extraction
+│   │   └── ...
 │   └── ...
-└── tests/
+├── skills/                       # Skill info.md files (102 total)
+└── tests/                        # 50+ test files (unit, e2e, stress)
 ```
 
 ## Command Router Pattern
@@ -228,11 +201,10 @@ result = await registry.execute("web_search", {"query": "..."})
 ```python
 from src.core.resilience import CircuitBreaker, with_retry
 
-# Pre-configured circuits (7 total)
-from src.core import (
-    exa_circuit, tavily_circuit, firebase_circuit,
-    qdrant_circuit, claude_circuit, telegram_circuit, gemini_circuit
-)
+# 11 pre-configured circuits available from src.core:
+# exa_circuit, tavily_circuit, firebase_circuit, qdrant_circuit,
+# claude_circuit, telegram_circuit, gemini_circuit, evolution_circuit,
+# google_calendar_circuit, google_tasks_circuit, apple_caldav_circuit
 
 # Use circuit breaker
 async def call_external_api():

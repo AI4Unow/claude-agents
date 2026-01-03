@@ -100,6 +100,26 @@ modal secret create gcp-credentials \
 # Note: Enable Vertex AI API in GCP Console before using
 ```
 
+### Calendar Credentials (Google & Apple)
+```bash
+# Google Calendar & Tasks
+modal secret create google-calendar-credentials \
+  GOOGLE_CALENDAR_CLIENT_ID=... \
+  GOOGLE_CALENDAR_CLIENT_SECRET=... \
+  GOOGLE_CALENDAR_REFRESH_TOKEN=...
+
+modal secret create google-tasks-credentials \
+  GOOGLE_TASKS_CLIENT_ID=... \
+  GOOGLE_TASKS_CLIENT_SECRET=... \
+  GOOGLE_TASKS_REFRESH_TOKEN=...
+
+# Apple CalDAV (iCloud)
+modal secret create apple-caldav-credentials \
+  APPLE_ID=... \
+  APPLE_APP_SPECIFIC_PASSWORD=... \
+  APPLE_CALDAV_URL=https://caldav.icloud.com
+```
+
 ## Deployment Commands
 
 ### Deploy to Production
@@ -203,6 +223,7 @@ After deployment, these endpoints are available:
 |----------|--------|---------|
 | `/health` | GET | Health check with circuit status |
 | `/webhook/telegram` | POST | Telegram webhook |
+| `/webhook/whatsapp` | POST | WhatsApp Evolution API webhook |
 | `/webhook/github` | POST | GitHub webhook |
 | `/api/skill` | POST | Execute skill |
 | `/api/skills` | GET | List skills |
@@ -298,8 +319,24 @@ curl https://<modal-url>/health
 
 # Response includes:
 # - status: healthy/degraded
-# - circuits: state of all 7 circuit breakers
+# - circuits: state of all 8 circuit breakers
 # - timestamp
+```
+
+### Dashboard Deployment
+
+The task management dashboard is a React application that can be deployed to Firebase Hosting:
+
+```bash
+# Install dependencies
+cd agents/dashboard
+npm install
+
+# Build
+npm run build
+
+# Deploy to Firebase
+firebase deploy --only hosting
 ```
 
 ### Firebase Console
@@ -348,6 +385,12 @@ Solution: Enable Vertex AI API in GCP Console and ensure billing is enabled
 Error: 404 bucket not found
 ```
 Solution: Enable Firebase Storage in Firebase Console
+
+**7. WhatsApp Evolution API errors**
+```
+Error: 401 Unauthorized
+```
+Solution: Check Evolution API token and instance name in secrets.
 
 ### Debug Mode
 

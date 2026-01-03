@@ -8,7 +8,7 @@ Deploy self-improving AI agents on Modal.com using the **II Framework (Informati
 
 **Phase:** Production MVP
 **Deploy URL:** https://duc-a-nguyen--claude-agents-telegramchatagent-app.modal.run
-**Last Updated:** Dec 29, 2025
+**Last Updated:** Jan 3, 2026
 
 ## Goals
 
@@ -41,14 +41,19 @@ Deploy self-improving AI agents on Modal.com using the **II Framework (Informati
 - [x] Vector memory setup in Qdrant
 - [x] Tool system with web search, code exec, etc.
 - [x] Skill API with multiple execution modes
-- [x] Circuit breakers for 7 external services
-- [x] Execution tracing with tool-level timing
-- [x] Self-improvement with Telegram admin approval
+- [x] Circuit breakers for 11 external services
+- [x] Execution tracing with tool-level timing (10% success, 100% error)
+- [x] Self-improvement with Telegram admin approval (HITL)
 - [x] Gemini API integration (research, grounding, vision, thinking)
 - [x] Firebase Storage for research reports
 - [x] User tier system (guest, user, developer, admin)
 - [x] Stress test framework (Locust + chaos engineering)
-- [x] 53 skills deployed (8 local, 40+ remote, 7 hybrid)
+- [x] 102 skills deployed (14 local, 73 remote, 15 hybrid)
+- [x] Smart Task Management (NLP parsing, bidirectional calendar sync, React dashboard)
+- [x] Bidirectional sync with Google/Apple Calendar & Tasks
+- [x] Smart timing & behavior-based reminder optimization
+- [x] Auto-scheduler with multi-skill orchestration (DAG validation)
+- [x] Claude Agents SDK (hooks, tools, checkpointing)
 - [ ] Monthly cost <$60 (monitoring)
 
 ## Implemented Features
@@ -66,14 +71,27 @@ Deploy self-improving AI agents on Modal.com using the **II Framework (Informati
 - **Cache warming** - @enter hook preloads skills and sessions on container start
 - **User tiers** - guest, user, developer, admin with rate limits
 
+### Core Framework
+- **Intent-Based Routing** - `classify_intent` for smart detection (CHAT, SKILL, ORCHESTRATE)
+- **Fast Chat Path** - Bypasses agentic loop for simple messages to reduce latency
+- **Smart FAQ** - Hybrid keyword + semantic matching for instant answers
+- **PKM Second Brain** - Personal knowledge management with capture, tasks, and semantic search
+- **Personalization 2.0** - Profiles, work context, and personal macros with parallel loading
+- **WhatsApp Integration** - Support for WhatsApp via Evolution API
+- **Smart Task Management** - NLP temporal extraction, bidirectional calendar sync, and completion verification
+- **Calendar Sync** - Bidirectional sync with Google/Apple Calendar & Tasks
+- **Smart Timing** - Behavior-based reminder optimization
+- **Auto-Scheduler** - Multi-skill orchestration with DAG validation
+- **Claude Agents SDK** - Hook-based architecture for tracing, circuits, and autonomous agent behavior
+
 ### Reliability & Observability
-- **Circuit Breakers** - 7 circuits (Exa, Tavily, Firebase, Qdrant, Claude, Telegram, Gemini)
-- **Execution Tracing** - TraceContext with tool-level timing and error tracking
+- **Circuit Breakers** - 11 circuits (Exa, Tavily, Firebase, Qdrant, Claude, Telegram, Gemini, Evolution, Google Calendar, Google Tasks, Apple CalDAV)
+- **UX Metrics & SLA** - Tracking response times and success rates with `/sla` command
+- **Execution Tracing** - TraceContext with tool-level timing (10% sampling) and error tracking (100%)
 - **Self-Improvement** - LLM-based error reflection with Telegram admin approval
-- **Retry Logic** - Exponential backoff with configurable thresholds
 
 ### Tools
-- `web_search` - Exa (primary) + Tavily (fallback)
+- `web_search` - 3-tier fallback: Exa → Gemini Grounding → Tavily
 - `get_datetime` - Timezone-aware date/time
 - `run_python` - Python code execution
 - `read_webpage` - URL content fetching
@@ -106,11 +124,12 @@ Deploy self-improving AI agents on Modal.com using the **II Framework (Informati
 - `/api/circuits` - Circuit breaker status (developer+)
 
 ### Telegram Commands
-- Basic: /start, /help, /status, /tier, /clear
-- Skills: /skills, /skill, /mode, /task, /cancel
-- Quick: /translate, /summarize, /rewrite
-- Developer: /traces, /trace, /circuits
-- Admin: /grant, /revoke, /admin, /remind, /reminders
+- Basic: /start, /help, /status, /tier, /clear, /onboarding
+- Skills: /skills, /skill, /mode, /task, /cancel, /suggest
+- PKM: /capture, /inbox, /notes, /tasks, /find
+- Personalization: /profile, /context, /macro, /macros, /activity, /forget
+- Developer: /traces, /trace, /circuits, /sla
+- Admin: /grant, /revoke, /admin, /remind, /reminders, /faq
 
 ## The II Framework
 
