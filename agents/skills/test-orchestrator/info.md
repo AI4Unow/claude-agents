@@ -1,16 +1,9 @@
 ---
+
 name: test-orchestrator
 description: Automated testing framework for ClaudeKit Marketing workflows.
 category: general
 deployment: both
----
-
----
-name: test-orchestrator
-description: >-
-  Test ClaudeKit workflows with step-by-step execution and manual verification.
-  Scan commands/agents/skills, generate test scenarios, validate integrations.
-  Use when testing commands, validating workflows, or regression testing after changes.
 ---
 
 # Test Orchestrator

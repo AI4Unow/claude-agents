@@ -1,13 +1,9 @@
 ---
+
 name: meeting-insights-analyzer
 description: This skill transforms your meeting transcripts into actionable insights about your communication pat
 category: analytics
 deployment: remote
----
-
----
-name: meeting-insights-analyzer
-description: Analyze meeting transcripts for communication patterns with NLP extraction. Use when you review speaking ratios, develop coaching reports, or process team dynamics.
 ---
 
 # Meeting Insights Analyzer

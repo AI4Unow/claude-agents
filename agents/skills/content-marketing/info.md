@@ -1,14 +1,9 @@
 ---
+
 name: content-marketing
 description: Strategic content planning, editorial workflows, and content optimization frameworks.
 category: marketing
 deployment: remote
----
-
----
-name: content-marketing
-description: Implement content strategy with editorial calendars and topic cluster mapping. Use when you develop content plans, create blog templates, or analyze content audits.
-license: MIT
 ---
 
 # Content Marketing

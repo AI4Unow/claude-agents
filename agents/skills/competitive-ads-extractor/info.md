@@ -1,13 +1,9 @@
 ---
+
 name: competitive-ads-extractor
 description: This skill extracts your competitors' ads from ad libraries and analyzes what's working—the problems
 category: marketing
 deployment: remote
----
-
----
-name: competitive-ads-extractor
-description: Extract competitor ads from Facebook, LinkedIn ad libraries with API access. Use when you analyze ad copy, develop campaign research, or review creative patterns.
 ---
 
 # Competitive Ads Extractor

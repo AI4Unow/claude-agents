@@ -1,17 +1,9 @@
 ---
+
 name: context-engineering
 description: Context engineering curates the smallest high-signal token set for LLM tasks. The goal: maximize rea
 category: general
 deployment: remote
----
-
----
-name: context-engineering
-description: >-
-  Optimize LLM context for agent systems with compaction, caching, and memory patterns.
-  Multi-agent coordination, token optimization, and LLM-as-Judge evaluation.
-  Use when designing agents, debugging context failures, or optimizing token usage.
-version: 1.0.0
 ---
 
 # Context Engineering

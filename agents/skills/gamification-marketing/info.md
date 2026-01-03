@@ -1,13 +1,9 @@
 ---
+
 name: gamification-marketing
 description: Design and implement gamified marketing campaigns using behavioral psychology and game mechanics.
 category: marketing
 deployment: remote
----
-
----
-name: gamification-marketing
-description: Design gamified campaigns with points, badges, and leaderboard mechanics. Use when you implement loyalty programs, develop engagement features, or build referrals.
 ---
 
 # Gamification Marketing

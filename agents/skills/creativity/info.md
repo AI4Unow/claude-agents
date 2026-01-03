@@ -1,14 +1,9 @@
 ---
+
 name: creativity
 description: Quick reference for creative direction in digital marketing campaigns.
 category: content
 deployment: remote
----
-
----
-name: creativity
-description: Design ad campaigns with 55 style templates and color psychology guides. Use when you create visual direction, develop scripts, or review campaign aesthetics.
-version: 1.0.0
 ---
 
 # Creativity - Creative Direction Guide

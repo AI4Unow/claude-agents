@@ -1,14 +1,9 @@
 ---
+
 name: design-system
 description: Token architecture, component specifications, systematic design, slide generation.
 category: design
 deployment: remote
----
-
----
-name: design-system
-description: Build design tokens with CSS variables and Tailwind component integration. Use when you implement token architecture, develop spacing scales, or create systematic design.
-license: MIT
 ---
 
 # Design System

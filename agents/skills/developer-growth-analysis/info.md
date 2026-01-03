@@ -1,13 +1,9 @@
 ---
+
 name: developer-growth-analysis
 description: This skill provides personalized feedback on your recent coding work by analyzing your Claude Code c
 category: development
 deployment: remote
----
-
----
-name: developer-growth-analysis
-description: Analyze Claude Code chat history to identify coding patterns and skill gaps. Use when you review development habits, track improvement, or generate growth reports.
 ---
 
 # Developer Growth Analysis

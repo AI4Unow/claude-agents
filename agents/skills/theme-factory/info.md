@@ -1,16 +1,10 @@
 ---
+
 name: theme-factory
 description: This skill provides a curated collection of professional font and color themes themes, each with car
 category: design
 deployment: remote
 ---
-
----
-name: theme-factory
-description: "Apply 10 CSS themes with tailwind palettes and fonts to slides, docs, HTML. Use when you design presentations, configure branding, or implement styling."
-license: Complete terms in LICENSE.txt
----
-
 
 # Theme Factory Skill
 

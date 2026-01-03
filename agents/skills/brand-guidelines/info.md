@@ -1,14 +1,9 @@
 ---
+
 name: brand-guidelines
 description: Brand identity, voice, messaging, asset management, and consistency frameworks.
 category: design
 deployment: remote
----
-
----
-name: brand-guidelines
-description: Manage brand identity with voice frameworks, CSS tokens, and logo rules. Use when you design brand assets, validate visual standards, or implement consistency.
-license: MIT
 ---
 
 # Brand Guidelines

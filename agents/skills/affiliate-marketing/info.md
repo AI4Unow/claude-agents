@@ -1,14 +1,9 @@
 ---
+
 name: affiliate-marketing
 description: Build and scale SaaS affiliate programs that drive 20-50% of customer acquisition at 30-50% lower CA
 category: marketing
 deployment: remote
----
-
----
-name: affiliate-marketing
-description: Build SaaS affiliate programs with PartnerStack, FirstPromoter integration. Use when you implement referral tracking, develop partner portals, or configure commissions.
-version: 1.0.0
 ---
 
 # Affiliate Marketing

@@ -1,14 +1,9 @@
 ---
+
 name: social-media
 description: Platform-specific content creation, scheduling, and engagement strategies.
 category: marketing
 deployment: remote
----
-
----
-name: social-media
-description: Create platform-optimized posts for LinkedIn, Twitter, Instagram, TikTok. Use when you develop social content, implement calendars, or analyze hashtag strategy.
-license: MIT
 ---
 
 # Social Media

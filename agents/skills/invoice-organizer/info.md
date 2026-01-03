@@ -1,13 +1,9 @@
 ---
+
 name: invoice-organizer
 description: This skill transforms chaotic folders of invoices, receipts, and financial documents into a clean, t
 category: document
 deployment: local
----
-
----
-name: invoice-organizer
-description: Extract and organize invoices into tax-ready folder structures with automation. Use when you implement bookkeeping, develop document sorting, or process receipts.
 ---
 
 # Invoice Organizer

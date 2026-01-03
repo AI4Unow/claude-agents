@@ -1,14 +1,9 @@
 ---
+
 name: seo-optimization
 description: Technical SEO, keyword research (ReviewWeb.site API), Google Search Console API, and programmatic SE
 category: marketing
 deployment: both
----
-
----
-name: seo-optimization
-description: Audit SEO with Google Search Console API, Core Web Vitals, JSON+LD schema. Use when you optimize rankings, implement keywords, or analyze technical SEO.
-license: MIT
 ---
 
 # SEO Optimization

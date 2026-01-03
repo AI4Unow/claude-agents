@@ -1,15 +1,9 @@
 ---
+
 name: threejs
 description: Build high-performance 3D web applications using Three.js - a cross-browser WebGL/WebGPU library.
 category: design
 deployment: local
----
-
----
-name: threejs
-description: Build immersive 3D web experiences with Three.js - WebGL/WebGPU library for scenes, cameras, geometries, materials, lights, animations, loaders, post-processing, shaders (including node-based TSL), compute, physics, VR/XR, and advanced rendering. Use when creating 3D visualizations, games, interactive graphics, data viz, product configurators, architectural walkthroughs, or WebGL/WebGPU applications. Covers OrbitControls, GLTF/FBX loading, PBR materials, shadow mapping, post-processing effects (bloom, SSAO, SSR), custom shaders, instancing, LOD, animation systems, and WebXR.
-license: MIT
-version: 1.0.0
 ---
 
 # Three.js Development

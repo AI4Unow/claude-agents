@@ -1,14 +1,9 @@
 ---
+
 name: kit-builder
 description: Build skills, agents, commands, and workflows for ClaudeKit Marketing.
 category: design
 deployment: both
----
-
----
-name: kit-builder
-description: "Build ClaudeKit skills, agents, and commands with init scripts. Use when you develop new automation, implement workflows, or create skill templates."
-license: MIT
 ---
 
 # Kit Builder

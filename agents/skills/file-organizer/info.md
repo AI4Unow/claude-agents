@@ -1,13 +1,9 @@
 ---
+
 name: file-organizer
 description: This skill acts as your personal organization assistant, helping you maintain a clean, logical file 
 category: document
 deployment: local
----
-
----
-name: file-organizer
-description: Organize files with duplicate detection and automated cleanup logic. Use when you implement folder cleanup, develop file structure, or configure directory automation.
 ---
 
 # File Organizer

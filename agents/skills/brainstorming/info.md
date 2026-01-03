@@ -1,13 +1,9 @@
 ---
+
 name: brainstorming
 description: Transform ideas into validated designs through structured dialogue. CRITICAL: This is a brainstormin
 category: content
 deployment: remote
----
-
----
-name: brainstorming
-description: Brainstorm solutions with YAGNI/KISS analysis, trade-offs, and validation steps. Use when you design architecture, review approaches, or develop implementation strategy.
 ---
 
 # Brainstorming

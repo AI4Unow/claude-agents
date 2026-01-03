@@ -1,19 +1,9 @@
 ---
+
 name: video-production
 description: Video marketing strategy, scripting, AI video generation, and platform optimization.
 category: media
 deployment: remote
----
-
----
-name: video-production
-description: Create video content with Veo 3.1 AI generation, scripts, and thumbnails. Use when you develop marketing videos, implement storyboards, or generate AI video.
-license: MIT
-allowed-tools:
-  - Bash
-  - Read
-  - Write
-  - Edit
 ---
 
 # Video Production

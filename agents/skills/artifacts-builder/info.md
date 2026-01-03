@@ -1,17 +1,9 @@
 ---
+
 name: artifacts-builder
 description: To build powerful frontend claude.ai artifacts, follow these steps:
 category: design
 deployment: local
----
-
----
-name: artifacts-builder
-description: >-
-  Create multi-component Claude.ai HTML artifacts with React, Tailwind, shadcn/ui.
-  Init, develop, and bundle complex artifacts into single HTML files.
-  Use when building complex claude.ai artifacts with state, routing, or components.
-license: Complete terms in LICENSE.txt
 ---
 
 # Artifacts Builder

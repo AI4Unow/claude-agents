@@ -1,13 +1,9 @@
 ---
+
 name: storage
 description: S3-compatible object storage integration for marketing assets. Works with Cloudflare R2, AWS S3, Min
 category: document
 deployment: remote
----
-
----
-name: storage
-description: Upload assets to S3-compatible storage (R2, AWS, MinIO) with sync and CDN. Use when you implement cloud uploads, deploy files to R2, or configure storage buckets.
 ---
 
 # Storage Skill

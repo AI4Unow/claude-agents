@@ -1,13 +1,9 @@
 ---
+
 name: lead-research-assistant
 description: This skill helps you identify and qualify potential leads for your business by analyzing your produc
 category: marketing
 deployment: remote
----
-
----
-name: lead-research-assistant
-description: Find and analyze B2B leads with customer profile research and outreach. Use when you implement lead generation, develop prospect lists, or review target accounts.
 ---
 
 # Lead Research Assistant

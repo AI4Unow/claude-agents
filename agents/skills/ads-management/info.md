@@ -1,14 +1,9 @@
 ---
+
 name: ads-management
 description: Paid advertising campaign creation, optimization, and performance tracking.
 category: marketing
 deployment: remote
----
-
----
-name: ads-management
-description: Manage Google, Meta, TikTok ads with budget optimization and A/B test analysis. Use when you implement ad campaigns, optimize ROAS, or develop audience targeting.
-license: MIT
 ---
 
 # Ads Management

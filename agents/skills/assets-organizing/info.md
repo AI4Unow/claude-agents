@@ -1,13 +1,9 @@
 ---
+
 name: assets-organizing
 description: Standardize asset output locations, naming conventions, and directory structures for all marketing o
 category: document
 deployment: remote
----
-
----
-name: assets-organizing
-description: Organize AI outputs into standardized directories with markdown naming conventions. Use when you create content files, configure paths, or generate structured assets.
 ---
 
 # Assets Organizing

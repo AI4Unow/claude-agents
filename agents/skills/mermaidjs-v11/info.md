@@ -1,13 +1,9 @@
 ---
+
 name: mermaidjs-v11
 description: Create text-based diagrams using Mermaid.js v11 declarative syntax. Convert code to SVG/PNG/PDF via 
 category: design
 deployment: local
----
-
----
-name: mermaidjs-v11
-description: "Create Mermaid.js v11 diagrams for flowcharts, ER, Gantt, 24+ types. Use when you generate architecture diagrams, implement docs visuals, or convert to SVG."
 ---
 
 # Mermaid.js v11

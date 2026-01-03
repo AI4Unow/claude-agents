@@ -1,16 +1,9 @@
 ---
+
 name: marketing-dashboard
 description: Status: Foundation Phase (Phase 1 Complete)
 category: marketing
 deployment: local
----
-
----
-name: marketing-dashboard
-description: >-
-  Local-first marketing command center with Vue 3, Hono API, and SQLite.
-  Manage campaigns, content calendar, and assets with AI automation.
-  Use when building marketing dashboards or campaign management interfaces.
 ---
 
 # Marketing Dashboard

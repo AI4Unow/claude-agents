@@ -1,13 +1,9 @@
 ---
+
 name: masterplan-builder
 description: Build a complete masterplan presentation (map, overview, chatbot) from a government decision documen
 category: design
 deployment: local
----
-
----
-name: masterplan-builder
-description: Generate masterplan visualizations from government docs with Firebase backend. Use when you implement map dashboards, develop document processing, or create chatbots.
 ---
 
 # Masterplan Builder Skill

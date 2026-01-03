@@ -1,15 +1,9 @@
 ---
+
 name: code-refactoring
 description: Guidelines and patterns for refactoring Procaffe Python scripts, based on the Dec 2025 codebase revi
 category: development
 deployment: local
----
-
----
-name: code-refactoring
-description: Refactor Python code with DRY patterns, Firebase singleton, and logging. Use when you implement shared utilities, extract modules, or optimize code structure.
-license: Proprietary
-allowed-tools: [Bash, Read, Write, Edit, Grep, Glob]
 ---
 
 # Code Refactoring Skill

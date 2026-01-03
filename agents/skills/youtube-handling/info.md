@@ -1,13 +1,9 @@
 ---
+
 name: youtube-handling
 description: Process YouTube videos: download, caption, summarize, screenshot, analyze comments.
 category: media
 deployment: remote
----
-
----
-name: youtube-handling
-description: "Download and analyze YouTube videos via API. Use when you extract transcripts, generate summaries, or process video metadata."
 ---
 
 # YouTube Handling with VidCap.xyz API

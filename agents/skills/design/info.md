@@ -1,17 +1,9 @@
 ---
+
 name: design
 description: Umbrella skill coordinating brand-guidelines, design-system, and ui-styling.
 category: design
 deployment: remote
----
-
----
-name: design
-description: >-
-  Design routing hub for brand-guidelines, design-system, and ui-styling skills.
-  Routes brand identity, tokens, and implementation tasks to correct skill.
-  Use when making design decisions, visual consistency audits, or design system setup.
-license: MIT
 ---
 
 # Design

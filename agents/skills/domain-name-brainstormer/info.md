@@ -1,13 +1,9 @@
 ---
+
 name: domain-name-brainstormer
 description: This skill helps you find the perfect domain name for your project by generating creative options an
 category: content
 deployment: remote
----
-
----
-name: domain-name-brainstormer
-description: Generate domain names and check availability across .com, .io, .dev TLDs. Use when you implement branding, develop project naming, or analyze domain options.
 ---
 
 # Domain Name Brainstormer

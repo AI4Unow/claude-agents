@@ -1,17 +1,9 @@
 ---
+
 name: content-hub
 description: Visual asset gallery for ClaudeKit Marketing.
 category: content
 deployment: remote
----
-
----
-name: content-hub
-description: Browse assets in visual gallery with filter, search, and preview API. Use when you implement content libraries, develop asset management, or review media.
-license: MIT
-allowed-tools:
-  - Bash
-  - Read
 ---
 
 # Content Hub

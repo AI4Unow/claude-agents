@@ -1,14 +1,9 @@
 ---
+
 name: modal-invoke
 description: Invoke Modal-deployed II Framework skills from Claude Code.
 category: general
 deployment: remote
----
-
----
-name: modal-invoke
-description: Execute Modal-deployed skills for GPU access, cloud compute, and parallel tasks. Use when you implement cloud execution, deploy serverless functions, or configure GPU.
-license: MIT
 ---
 
 # Modal Invoke

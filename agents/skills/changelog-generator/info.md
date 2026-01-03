@@ -1,13 +1,9 @@
 ---
+
 name: changelog-generator
 description: This skill transforms technical git commits into polished, user-friendly changelogs that your custom
 category: automation
 deployment: remote
----
-
----
-name: changelog-generator
-description: Generate changelogs from git commits with categorization and formatting. Use when you create release notes, develop app store updates, or process commit history.
 ---
 
 # Changelog Generator

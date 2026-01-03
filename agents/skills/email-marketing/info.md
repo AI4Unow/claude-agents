@@ -1,14 +1,9 @@
 ---
+
 name: email-marketing
 description: Email campaign creation, automation workflows, and performance optimization.
 category: marketing
 deployment: local
----
-
----
-name: email-marketing
-description: Build email campaigns with automation flows, drip sequences, and A/B testing. Use when you implement newsletters, develop workflows, or optimize deliverability.
-license: MIT
 ---
 
 # Email Marketing

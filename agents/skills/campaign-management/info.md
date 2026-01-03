@@ -1,14 +1,9 @@
 ---
+
 name: campaign-management
 description: End-to-end campaign planning, execution, and optimization frameworks.
 category: marketing
 deployment: remote
----
-
----
-name: campaign-management
-description: Implement marketing campaigns with briefs, checklists, and budget tracking. Use when you create campaign plans, develop launch timelines, or analyze performance.
-license: MIT
 ---
 
 # Campaign Management

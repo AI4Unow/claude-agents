@@ -1,18 +1,9 @@
 ---
+
 name: caption-automation
 description: Generate AI-powered TikTok captions using Vertex AI Gemini for video content.
 category: automation
 deployment: local
----
-
----
-name: caption-automation
-description: >-
-  Generate TikTok captions with Vertex AI Gemini and competitor hashtag analysis.
-  Bilingual (Vietnamese/English) hooks, batch processing, smart hashtag selection.
-  Use when generating captions, creating hooks, or batch-processing video captions.
-license: Proprietary
-allowed-tools: [Bash, Read]
 ---
 
 # Caption Automation Skill

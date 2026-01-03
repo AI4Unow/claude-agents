@@ -1,13 +1,9 @@
 ---
+
 name: raffle-winner-picker
 description: This skill randomly selects winners from lists, spreadsheets, or Google Sheets for giveaways and con
 category: general
 deployment: remote
----
-
----
-name: raffle-winner-picker
-description: Generate random winners from CSV, Google Sheets with cryptographic selection. Use when you create giveaways, implement raffles, or develop contest logic.
 ---
 
 # Raffle Winner Picker

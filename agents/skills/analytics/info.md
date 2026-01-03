@@ -1,14 +1,9 @@
 ---
+
 name: analytics
 description: Performance measurement, reporting, and data-driven optimization.
 category: analytics
 deployment: remote
----
-
----
-name: analytics
-description: Analyze marketing data with Google Analytics 4 API and attribution models. Use when you implement dashboards, develop ROI reports, or test funnel optimization.
-license: MIT
 ---
 
 # Marketing Analytics

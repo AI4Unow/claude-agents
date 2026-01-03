@@ -1,14 +1,9 @@
 ---
+
 name: copywriting
 description: Formulas, templates, patterns, and writing styles for high-converting copy.
 category: content
 deployment: remote
----
-
----
-name: copywriting
-description: Write conversion copy with AIDA, PAS formulas and 50 style presets. Use when you create sales copy, develop headlines, or implement email sequences.
-license: MIT
 ---
 
 # Copywriting

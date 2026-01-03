@@ -1,14 +1,9 @@
 ---
+
 name: referral-program-building
 description: Build viral referral programs that drive 2-3x higher conversion rates with 37% better retention.
 category: design
 deployment: remote
----
-
----
-name: referral-program-building
-description: Build SaaS referral programs with Rewardful, ReferralCandy API integration. Use when you implement viral loops, develop reward tracking, or configure fraud prevention.
-version: 1.0.0
 ---
 
 # Referral Program Building
