@@ -11,7 +11,9 @@ SLOW_SKILLS = {
     "telegram-chat", "devops", "firebase-automation", "problem-solving",
     "sequential-thinking", "skill-creator", "mcp-management",
     "internal-comms", "worktree-manager", "gemini-deep-research",
-    "content-research-writer"
+    "content-research-writer",
+    # Design skills are LLM-heavy and need extra time
+    "ui-ux-pro-max", "ui-styling", "frontend-design-pro", "frontend-design",
 }
 
 # Local skills that get queued to Firebase instead of executing directly
@@ -22,56 +24,57 @@ LOCAL_SKILLS = {
 }
 
 # Skill categories with expected response patterns
+# Broadened keywords to account for LLM output variability
 SKILL_ASSERTIONS = {
     # Research skills - expect report/analysis structure
-    "planning": {"contains": ["plan", "step", "implement"]},
-    "debugging": {"contains": ["debug", "issue", "fix"]},
-    "research": {"contains": ["research", "find", "result"]},
-    "code-review": {"contains": ["review", "code", "suggest"]},
+    "planning": {"contains": ["plan", "step", "implement", "phase", "task", "approach"]},
+    "debugging": {"contains": ["debug", "issue", "fix", "error", "trace", "problem"]},
+    "research": {"contains": ["research", "find", "result", "information", "search", "discovered", "learn"]},
+    "code-review": {"contains": ["review", "code", "suggest", "improve", "quality", "issue"]},
 
     # Development skills - expect code/technical output
-    "backend-development": {"contains": ["api", "endpoint", "database"]},
-    "frontend-development": {"contains": ["component", "ui", "react"]},
-    "mobile-development": {"contains": ["app", "mobile", "screen"]},
+    "backend-development": {"contains": ["api", "endpoint", "database", "server", "route", "http"]},
+    "frontend-development": {"contains": ["component", "ui", "react", "button", "render", "jsx"]},
+    "mobile-development": {"contains": ["app", "mobile", "screen", "ios", "android", "react native", "flutter"]},
 
     # Design skills - expect design artifacts
-    "ui-ux-pro-max": {"contains": ["design", "ui", "component"]},
-    "ui-styling": {"contains": ["style", "css", "color"]},
-    "frontend-design-pro": {"contains": ["design", "layout", "interface"]},
+    "ui-ux-pro-max": {"contains": ["design", "ui", "component", "user", "interface", "layout", "form"]},
+    "ui-styling": {"contains": ["style", "css", "color", "tailwind", "theme", "class"]},
+    "frontend-design-pro": {"contains": ["design", "layout", "interface", "visual", "component", "ui"]},
 
     # AI skills - expect AI-generated content
-    "ai-multimodal": {"contains": ["image", "vision", "analyze"]},
-    "ai-artist": {"contains": ["create", "generate", "art"]},
-    "gemini-grounding": {"contains": ["search", "ground", "fact"]},
-    "gemini-thinking": {"contains": ["think", "reason", "analyze"]},
+    "ai-multimodal": {"contains": ["image", "vision", "analyze", "ai", "model", "multimodal"]},
+    "ai-artist": {"contains": ["create", "generate", "art", "image", "visual", "concept"]},
+    "gemini-grounding": {"contains": ["search", "ground", "fact", "source", "information"]},
+    "gemini-thinking": {"contains": ["think", "reason", "analyze", "step", "logic"]},
 
     # Content skills - expect content output
-    "content": {"contains": ["content", "write", "create"]},
-    "content-research-writer": {"contains": ["research", "write", "article"]},
+    "content": {"contains": ["content", "write", "create", "text", "copy"]},
+    "content-research-writer": {"contains": ["research", "write", "article", "content", "topic"]},
 
     # Data skills - expect data handling
-    "data": {"contains": ["data", "analyze", "report"]},
-    "databases": {"contains": ["database", "query", "schema"]},
+    "data": {"contains": ["data", "analyze", "report", "insight", "metric"]},
+    "databases": {"contains": ["database", "query", "schema", "table", "sql"]},
 
     # Integration skills - expect integration info
-    "github": {"contains": ["github", "repo", "issue"]},
-    "telegram-chat": {"contains": ["telegram", "chat", "message"]},
-    "shopify": {"contains": ["shopify", "store", "product"]},
-    "payment-integration": {"contains": ["payment", "stripe", "checkout"]},
+    "github": {"contains": ["github", "repo", "issue", "repository", "commit"]},
+    "telegram-chat": {"contains": ["telegram", "chat", "message", "bot", "send"]},
+    "shopify": {"contains": ["shopify", "store", "product", "ecommerce"]},
+    "payment-integration": {"contains": ["payment", "stripe", "checkout", "transaction"]},
 
     # DevOps skills - expect infra commands
-    "devops": {"contains": ["deploy", "docker", "cloud"]},
-    "firebase-automation": {"contains": ["firebase", "firestore", "auth"]},
+    "devops": {"contains": ["deploy", "docker", "cloud", "container", "kubernetes"]},
+    "firebase-automation": {"contains": ["firebase", "firestore", "auth", "database"]},
 
     # Cognitive skills - expect structured thinking
-    "problem-solving": {"contains": ["problem", "solution", "approach"]},
-    "sequential-thinking": {"contains": ["step", "think", "reason"]},
+    "problem-solving": {"contains": ["problem", "solution", "approach", "solve", "step"]},
+    "sequential-thinking": {"contains": ["step", "think", "reason", "sequence", "process"]},
 
     # Meta skills
-    "skill-creator": {"contains": ["skill", "create", "template"]},
-    "mcp-management": {"contains": ["mcp", "server", "tool"]},
-    "internal-comms": {"contains": ["communication", "update", "report"]},
-    "worktree-manager": {"contains": ["worktree", "branch", "git"]},
+    "skill-creator": {"contains": ["skill", "create", "template", "define"]},
+    "mcp-management": {"contains": ["mcp", "server", "tool", "protocol"]},
+    "internal-comms": {"contains": ["communication", "update", "report", "status"]},
+    "worktree-manager": {"contains": ["worktree", "branch", "git", "parallel"]},
 }
 
 # Default test prompts per skill

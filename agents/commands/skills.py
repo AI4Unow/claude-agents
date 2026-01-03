@@ -84,21 +84,25 @@ async def skill_command(args: str, user: dict, chat_id: int) -> str:
 
 <b>Usage:</b> /skill {skill.name} <your task>"""
 
-    # Execute skill
+    # Execute skill (with local/remote routing)
     import sys
     import time
     main_module = sys.modules.get("main")
     if not main_module:
         import main as main_module
-    execute_skill_simple = main_module.execute_skill_simple
-
-    from src.services.telegram import format_skill_result
+    execute_or_queue_skill = main_module.execute_or_queue_skill
 
     start = time.time()
-    result = await execute_skill_simple(skill_name, task, {"user": user})
-    duration_ms = int((time.time() - start) * 1000)
-
-    return format_skill_result(skill_name, result, duration_ms)
+    result = await execute_or_queue_skill(
+        skill_name,
+        task,
+        user.get("id"),
+        user,
+        chat_id,
+        None  # No progress message for command
+    )
+    # result is already formatted by execute_or_queue_skill
+    return result
 
 
 @command_router.command(

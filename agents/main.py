@@ -78,9 +78,23 @@ def validate_user_input(text: str) -> tuple[str, str | None]:
 def is_local_skill(skill_name: str) -> bool:
     """Check if skill requires local execution.
 
-    Returns True if skill's deployment field is 'local'.
+    Returns True if skill's deployment field is 'local' or if skill is in
+    the known local skills list (fallback when skill not synced to Modal).
+
     Skills with 'remote' or 'both' are executed on Modal.
     """
+    # Known local-only skills (not synced to Modal volume)
+    # These require Claude Code or local executor for browser/desktop access
+    LOCAL_SKILLS = {
+        "pdf", "docx", "xlsx", "pptx",  # Document processing
+        "canvas-design",  # Design/canvas
+        "media-processing", "image-enhancer", "video-downloader",  # Media
+    }
+
+    if skill_name in LOCAL_SKILLS:
+        return True
+
+    # Check registry for hybrid skills marked as local
     from src.skills.registry import get_registry
 
     registry = get_registry()
@@ -2340,33 +2354,39 @@ async def daily_summary():
     timeout=60,
 )
 async def send_due_reminders():
-    """Check for due reminders and send them."""
+    """Check for due SmartTasks and send notifications.
+
+    Uses the new SmartTask system (replaces legacy reminders).
+    """
     import structlog
-    from src.services.firebase import (
-        init_firebase, get_due_reminders, mark_reminder_sent
-    )
+    from src.services.firebase import init_firebase, get_due_tasks, update_smart_task
 
     logger = structlog.get_logger()
     init_firebase()
 
     try:
-        reminders = await get_due_reminders()
-        logger.info("checking_reminders", count=len(reminders))
+        # Get tasks due now
+        tasks = await get_due_tasks()
+        logger.info("checking_due_tasks", count=len(tasks))
 
-        for reminder in reminders:
-            chat_id = reminder.get("chat_id")
-            message = reminder.get("message")
-            reminder_id = reminder.get("id")
+        for task in tasks:
+            chat_id = task.user_id  # SmartTask uses user_id
+            message = task.title
+            task_id = task.id
+
+            if not chat_id:
+                continue
 
             # Send notification
+            context = f"\n\n📝 {task.notes}" if task.notes else ""
             await send_telegram_message(
                 chat_id,
-                f"⏰ <b>Reminder</b>\n\n{message}"
+                f"⏰ <b>Task Due</b>\n\n{message}{context}"
             )
 
-            # Mark as sent
-            await mark_reminder_sent(reminder_id)
-            logger.info("reminder_sent", id=reminder_id)
+            # Mark as notified by updating the task
+            await update_smart_task(task_id, {"notified": True})
+            logger.info("task_notification_sent", id=task_id)
 
     except Exception as e:
         logger.error("reminder_error", error=str(e))
