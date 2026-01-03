@@ -1,3 +1,10 @@
+---
+name: telegram-chat
+description: Telegram bot interface for AI4U.now
+category: agent
+deployment: remote
+---
+
 # AI4U.now Bot
 
 ## Your Identity

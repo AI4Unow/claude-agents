@@ -1,3 +1,10 @@
+---
+name: github
+description: GitHub repository automation and issue management
+category: agent
+deployment: remote
+---
+
 # GitHub Agent
 
 ## Instructions

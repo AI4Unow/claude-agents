@@ -1,3 +1,10 @@
+---
+name: content
+description: Content generation, translation, and transformation
+category: agent
+deployment: remote
+---
+
 # Content Agent
 
 ## Instructions

@@ -1,3 +1,10 @@
+---
+name: data
+description: Data analysis and report generation
+category: agent
+deployment: remote
+---
+
 # Data Agent
 
 ## Instructions
