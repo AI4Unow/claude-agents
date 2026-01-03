@@ -1,5 +1,4 @@
 ---
-
 name: campaign-management
 description: End-to-end campaign planning, execution, and optimization frameworks.
 category: marketing

@@ -1,5 +1,4 @@
 ---
-
 name: brainstorming
 description: Transform ideas into validated designs through structured dialogue. CRITICAL: This is a brainstormin
 category: content

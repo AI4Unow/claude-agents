@@ -1,5 +1,4 @@
 ---
-
 name: mermaidjs-v11
 description: Create text-based diagrams using Mermaid.js v11 declarative syntax. Convert code to SVG/PNG/PDF via 
 category: design

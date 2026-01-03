@@ -1,5 +1,4 @@
 ---
-
 name: competitive-ads-extractor
 description: This skill extracts your competitors' ads from ad libraries and analyzes what's working—the problems
 category: marketing

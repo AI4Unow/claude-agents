@@ -1,5 +1,4 @@
 ---
-
 name: social-media
 description: Platform-specific content creation, scheduling, and engagement strategies.
 category: marketing

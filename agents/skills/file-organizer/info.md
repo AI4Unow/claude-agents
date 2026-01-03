@@ -1,5 +1,4 @@
 ---
-
 name: file-organizer
 description: This skill acts as your personal organization assistant, helping you maintain a clean, logical file 
 category: document

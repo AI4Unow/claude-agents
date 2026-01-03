@@ -1,5 +1,4 @@
 ---
-
 name: creativity
 description: Quick reference for creative direction in digital marketing campaigns.
 category: content

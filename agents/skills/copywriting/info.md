@@ -1,5 +1,4 @@
 ---
-
 name: copywriting
 description: Formulas, templates, patterns, and writing styles for high-converting copy.
 category: content

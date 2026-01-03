@@ -1,5 +1,4 @@
 ---
-
 name: meeting-insights-analyzer
 description: This skill transforms your meeting transcripts into actionable insights about your communication pat
 category: analytics

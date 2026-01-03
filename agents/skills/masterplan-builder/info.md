@@ -1,5 +1,4 @@
 ---
-
 name: masterplan-builder
 description: Build a complete masterplan presentation (map, overview, chatbot) from a government decision documen
 category: design

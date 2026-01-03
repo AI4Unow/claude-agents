@@ -1,5 +1,4 @@
 ---
-
 name: modal-invoke
 description: Invoke Modal-deployed II Framework skills from Claude Code.
 category: general

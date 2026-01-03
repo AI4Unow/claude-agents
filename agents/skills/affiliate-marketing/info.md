@@ -1,5 +1,4 @@
 ---
-
 name: affiliate-marketing
 description: Build and scale SaaS affiliate programs that drive 20-50% of customer acquisition at 30-50% lower CA
 category: marketing

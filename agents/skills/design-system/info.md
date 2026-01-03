@@ -1,5 +1,4 @@
 ---
-
 name: design-system
 description: Token architecture, component specifications, systematic design, slide generation.
 category: design

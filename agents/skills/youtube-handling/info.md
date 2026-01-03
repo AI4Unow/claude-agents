@@ -1,5 +1,4 @@
 ---
-
 name: youtube-handling
 description: Process YouTube videos: download, caption, summarize, screenshot, analyze comments.
 category: media

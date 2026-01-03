@@ -1,5 +1,4 @@
 ---
-
 name: design
 description: Umbrella skill coordinating brand-guidelines, design-system, and ui-styling.
 category: design

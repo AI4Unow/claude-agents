@@ -1,5 +1,4 @@
 ---
-
 name: code-refactoring
 description: Guidelines and patterns for refactoring Procaffe Python scripts, based on the Dec 2025 codebase revi
 category: development

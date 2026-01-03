@@ -1,5 +1,4 @@
 ---
-
 name: caption-automation
 description: Generate AI-powered TikTok captions using Vertex AI Gemini for video content.
 category: automation

@@ -1,5 +1,4 @@
 ---
-
 name: raffle-winner-picker
 description: This skill randomly selects winners from lists, spreadsheets, or Google Sheets for giveaways and con
 category: general

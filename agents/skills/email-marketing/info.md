@@ -1,5 +1,4 @@
 ---
-
 name: email-marketing
 description: Email campaign creation, automation workflows, and performance optimization.
 category: marketing

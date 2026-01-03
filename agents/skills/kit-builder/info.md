@@ -1,5 +1,4 @@
 ---
-
 name: kit-builder
 description: Build skills, agents, commands, and workflows for ClaudeKit Marketing.
 category: design

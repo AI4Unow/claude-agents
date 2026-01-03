@@ -1,5 +1,4 @@
 ---
-
 name: video-production
 description: Video marketing strategy, scripting, AI video generation, and platform optimization.
 category: media

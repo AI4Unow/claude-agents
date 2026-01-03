@@ -1,5 +1,4 @@
 ---
-
 name: content-marketing
 description: Strategic content planning, editorial workflows, and content optimization frameworks.
 category: marketing

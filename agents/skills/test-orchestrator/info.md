@@ -1,5 +1,4 @@
 ---
-
 name: test-orchestrator
 description: Automated testing framework for ClaudeKit Marketing workflows.
 category: general

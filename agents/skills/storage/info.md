@@ -1,5 +1,4 @@
 ---
-
 name: storage
 description: S3-compatible object storage integration for marketing assets. Works with Cloudflare R2, AWS S3, Min
 category: document

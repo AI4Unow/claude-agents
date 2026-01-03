@@ -1,5 +1,4 @@
 ---
-
 name: docs-seeker
 description: Script-first documentation discovery using llms.txt standard.
 category: document

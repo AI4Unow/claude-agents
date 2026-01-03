@@ -1,5 +1,4 @@
 ---
-
 name: assets-organizing
 description: Standardize asset output locations, naming conventions, and directory structures for all marketing o
 category: document

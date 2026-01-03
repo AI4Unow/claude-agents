@@ -1,5 +1,4 @@
 ---
-
 name: referral-program-building
 description: Build viral referral programs that drive 2-3x higher conversion rates with 37% better retention.
 category: design

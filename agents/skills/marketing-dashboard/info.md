@@ -1,5 +1,4 @@
 ---
-
 name: marketing-dashboard
 description: Status: Foundation Phase (Phase 1 Complete)
 category: marketing

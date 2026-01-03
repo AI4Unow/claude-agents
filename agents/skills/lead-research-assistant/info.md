@@ -1,5 +1,4 @@
 ---
-
 name: lead-research-assistant
 description: This skill helps you identify and qualify potential leads for your business by analyzing your produc
 category: marketing

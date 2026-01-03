@@ -1,5 +1,4 @@
 ---
-
 name: changelog-generator
 description: This skill transforms technical git commits into polished, user-friendly changelogs that your custom
 category: automation

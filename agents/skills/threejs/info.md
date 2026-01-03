@@ -1,5 +1,4 @@
 ---
-
 name: threejs
 description: Build high-performance 3D web applications using Three.js - a cross-browser WebGL/WebGPU library.
 category: design

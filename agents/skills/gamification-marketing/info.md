@@ -1,5 +1,4 @@
 ---
-
 name: gamification-marketing
 description: Design and implement gamified marketing campaigns using behavioral psychology and game mechanics.
 category: marketing

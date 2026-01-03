@@ -1,5 +1,4 @@
 ---
-
 name: invoice-organizer
 description: This skill transforms chaotic folders of invoices, receipts, and financial documents into a clean, t
 category: document

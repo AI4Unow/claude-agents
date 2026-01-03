@@ -1,5 +1,4 @@
 ---
-
 name: slack-gif-creator
 description: A toolkit for creating animated GIFs optimized for Slack. Provides validators for Slack's constraint
 category: agent

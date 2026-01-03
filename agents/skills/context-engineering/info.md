@@ -1,5 +1,4 @@
 ---
-
 name: context-engineering
 description: Context engineering curates the smallest high-signal token set for LLM tasks. The goal: maximize rea
 category: general

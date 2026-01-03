@@ -1,5 +1,4 @@
 ---
-
 name: content-hub
 description: Visual asset gallery for ClaudeKit Marketing.
 category: content

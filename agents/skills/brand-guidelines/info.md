@@ -1,5 +1,4 @@
 ---
-
 name: brand-guidelines
 description: Brand identity, voice, messaging, asset management, and consistency frameworks.
 category: design

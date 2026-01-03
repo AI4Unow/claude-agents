@@ -1,5 +1,4 @@
 ---
-
 name: ads-management
 description: Paid advertising campaign creation, optimization, and performance tracking.
 category: marketing
