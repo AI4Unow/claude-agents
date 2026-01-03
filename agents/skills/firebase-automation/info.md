@@ -1,6 +1,7 @@
 ---
 name: firebase-automation
 description: "Firebase/Firestore admin and knowledge base management for Procaffe. Use when user needs to manage Firestore collections, sync to Pinecone, or query knowledge base."
+deployment: remote
 license: Proprietary
 allowed-tools: [Bash, Read]
 ---

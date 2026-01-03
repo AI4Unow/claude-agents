@@ -1,6 +1,7 @@
 ---
 name: planning
 description: Use when you need to plan technical solutions that are scalable, secure, and maintainable.
+deployment: remote
 license: MIT
 ---
 

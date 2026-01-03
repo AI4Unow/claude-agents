@@ -1,6 +1,7 @@
 ---
 name: publer-automation
 description: "Publer social media management for Procaffe. Use when user needs to upload, schedule, or manage social media posts via Publer."
+deployment: remote
 license: Proprietary
 allowed-tools: [Bash, Read]
 ---

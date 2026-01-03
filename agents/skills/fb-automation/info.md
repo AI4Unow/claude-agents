@@ -1,6 +1,7 @@
 ---
 name: fb-automation
 description: "Facebook content scraping and repurposing for Procaffe. Use when user needs to scrape Facebook videos, reels, or import content to Firebase."
+deployment: local
 license: Proprietary
 allowed-tools: [Bash, Read]
 ---

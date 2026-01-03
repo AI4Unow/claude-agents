@@ -1,6 +1,7 @@
 ---
 name: fb-to-tiktok
 description: Repurpose Facebook videos for TikTok. Download FB reels via yt-dlp, convert to 9:16 vertical format with blur background, upload via Publer API. Runs daily at 9 AM via launchd. Use when user mentions "repurpose facebook", "fb to tiktok", "download fb videos", or "upload to tiktok".
+deployment: local
 license: Proprietary
 allowed-tools: [Bash, Read]
 ---

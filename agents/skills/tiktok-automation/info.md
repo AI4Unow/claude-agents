@@ -1,6 +1,7 @@
 ---
 name: tiktok-automation
 description: "TikTok automation for Procaffe - auto-liking, following, scraping profiles, processing videos. Use when user mentions TikTok automation, engagement, or content scraping."
+deployment: local
 license: Proprietary
 allowed-tools: [Bash, Read]
 ---

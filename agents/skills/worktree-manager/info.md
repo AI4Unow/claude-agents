@@ -1,6 +1,7 @@
 ---
 name: worktree-manager
 description: Create, manage, and cleanup git worktrees with Claude Code agents across all projects. USE THIS SKILL when user says "create worktree", "spin up worktrees", "new worktree for X", "worktree status", "cleanup worktrees", or wants parallel development branches. Handles worktree creation, dependency installation, validation, agent launching in Ghostty, and global registry management.
+deployment: remote
 ---
 
 # Global Worktree Manager

@@ -1,6 +1,7 @@
 ---
 name: linkedin-automation
 description: "LinkedIn automation for Procaffe - connection requests, engagement, posting, lead scraping. Use when user mentions LinkedIn automation or B2B outreach."
+deployment: local
 license: Proprietary
 allowed-tools: [Bash, Read]
 ---
